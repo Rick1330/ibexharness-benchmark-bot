@@ -1,0 +1,10 @@
+{
+  "name": "@ibexharness/comment-renderer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Rich benchmark markdown renderer for PR comments and data PRs",
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  }
+}

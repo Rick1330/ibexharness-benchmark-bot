@@ -1,0 +1,11 @@
+{
+  "status": "pass",
+  "regression_pct": -2.6,
+  "checks": [
+    { "name": "k6 throughput present", "value": 8665.17, "limit": 1.0, "ok": true },
+    { "name": "k6 checks passing", "value": 1.0, "limit": 0.99, "ok": true },
+    { "name": "k6 p99 SLA", "value": 4.643, "limit": 20.0, "ok": true },
+    { "name": "error rate", "value": 0.0, "limit": 0.001, "ok": true },
+    { "name": "regression vs baseline (%)", "value": -2.6, "limit": 20.0, "ok": true }
+  ]
+}

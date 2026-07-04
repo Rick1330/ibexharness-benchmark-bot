@@ -1,0 +1,116 @@
+name: Publish benchmark data
+
+on:
+  repository_dispatch:
+    types: [benchmark_main_complete]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Harness Benchmarks workflow run ID
+        required: true
+      head_sha:
+        description: Commit SHA from that run
+        required: true
+      run_number:
+        description: Harness workflow run number (not run ID)
+        required: true
+      dry_run:
+        description: Validate only, do not open PR
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-benchmark-${{ github.event.client_payload.run_id || github.event.inputs.run_id }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: publish-benchmark-data
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a226fd948759f221de0c # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Resolve dispatch payload
+        id: payload
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+          INPUT_RUN_ID: ${{ github.event.inputs.run_id }}
+          INPUT_HEAD_SHA: ${{ github.event.inputs.head_sha }}
+          INPUT_RUN_NUMBER: ${{ github.event.inputs.run_number }}
+        run: |
+          python <<'PY'
+          import json, os, sys
+          if os.environ.get("EVENT_NAME") == "workflow_dispatch":
+              payload = {
+                  "run_id": os.environ["INPUT_RUN_ID"],
+                  "head_sha": os.environ["INPUT_HEAD_SHA"],
+                  "run_number": os.environ["INPUT_RUN_NUMBER"],
+              }
+          else:
+              payload = json.loads(os.environ.get("CLIENT_PAYLOAD") or "{}")
+          for key in ("run_id", "head_sha", "run_number"):
+              if key not in payload or payload[key] in (None, ""):
+                  print(f"missing payload field: {key}", file=sys.stderr)
+                  sys.exit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"json={json.dumps(payload)}\n")
+          PY
+
+      - name: Verify dispatch payload
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+          HARNESS_REPO: Rick1330/ibex-harness
+          RUN_ID: ${{ fromJson(steps.payload.outputs.json).run_id }}
+          HEAD_SHA: ${{ fromJson(steps.payload.outputs.json).head_sha }}
+          RUN_NUMBER: ${{ fromJson(steps.payload.outputs.json).run_number }}
+        run: python scripts/verify_dispatch.py
+
+      - name: Publish benchmark data PR
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true'
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+          HARNESS_REPO: Rick1330/ibex-harness
+          PUBLISH_PAYLOAD: ${{ steps.payload.outputs.json }}
+        run: python scripts/publish_benchmark_data.py --payload "$PUBLISH_PAYLOAD"
+
+      - name: Dry run validation only
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+          HARNESS_REPO: Rick1330/ibex-harness
+          PUBLISH_PAYLOAD: ${{ steps.payload.outputs.json }}
+        run: python scripts/publish_benchmark_data.py --payload "$PUBLISH_PAYLOAD" --dry-run
+
+      - name: Workflow summary
+        if: always()
+        env:
+          RUN_ID: ${{ fromJson(steps.payload.outputs.json).run_id }}
+          HEAD_SHA: ${{ fromJson(steps.payload.outputs.json).head_sha }}
+        run: |
+          {
+            echo "## Benchmark publish"
+            echo "- run_id: ${RUN_ID}"
+            echo "- head_sha: ${HEAD_SHA}"
+          } >> "$GITHUB_STEP_SUMMARY"
