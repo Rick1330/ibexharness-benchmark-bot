@@ -107,7 +107,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         } => {
             let body = render_comment_from_paths(&benchmark_data, &gate_result)?;
             let (owner, repo) = crate::github::split_repo(&github_repository)?;
-            let client = GitHubClient::new(github_token);
+            let client = comment_client(&github_token).await?;
             client
                 .post_issue_comment(owner, repo, pr_number, &body)
                 .await?;
@@ -125,6 +125,16 @@ async fn app_client() -> Result<GitHubClient> {
         .map_err(|_| bot_err("missing INSTALLATION_ID".to_string()))?;
     let token = installation_token(&app_id, &private_key, &installation_id).await?;
     Ok(GitHubClient::new(token))
+}
+
+async fn comment_client(fallback_token: &str) -> Result<GitHubClient> {
+    let has_app = std::env::var("APP_ID").is_ok()
+        && std::env::var("APP_PRIVATE_KEY").is_ok()
+        && std::env::var("INSTALLATION_ID").is_ok();
+    if has_app {
+        return app_client().await;
+    }
+    Ok(GitHubClient::new(fallback_token.to_string()))
 }
 
 fn render_comment_from_paths(benchmark_data: &PathBuf, gate_result: &PathBuf) -> Result<String> {

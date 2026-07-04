@@ -1,72 +1,58 @@
-# GitHub App setup — ibexharness-benchmark-bot
+# GitHub App setup
 
-Follow these steps once to enable the publish workflow. All steps are **$0** on public repositories.
+## 1. Create the App
 
-## 1. Create the GitHub App
-
-1. Go to **GitHub → Settings → Developer settings → GitHub Apps → New GitHub App**.
+1. **GitHub → Settings → Developer settings → GitHub Apps → New GitHub App**
 2. **Name:** `ibexharness-benchmark-bot`
 3. **Homepage URL:** `https://github.com/Rick1330/ibexharness-benchmark-bot`
-4. **Webhook:** Uncheck **Active** (not needed — we use `repository_dispatch`, not webhooks).
-5. **Repository permissions:**
-   - Contents: **Read and write**
-   - Pull requests: **Read and write**
-   - Actions: **Read-only**
-   - Metadata: **Read-only** (automatic)
-6. **Where can this GitHub App be installed?** Only on this account.
-7. Create the app. Note the **App ID**.
-8. Generate a **private key** (.pem). Download and store securely.
+4. **Webhook:** inactive (not used)
+5. **Logo:** upload `docs/brand/android-chrome-512x512.png` (IBEX mark shown beside bot comments)
+6. **Permissions:** Contents R/W, Pull requests R/W, Actions read, Metadata read
+7. **Install on:** this account only
+8. Note **App ID**; generate and save **private key** (.pem)
 
-## 2. Install on ibex-harness only
+## 2. Install on ibex-harness
 
-1. App settings → **Install App** → select **Rick1330/ibex-harness** only.
-2. Note the **Installation ID** from:
-   ```bash
-   gh api /users/Rick1330/installations --jq '.installations[] | select(.app_slug=="ibexharness-benchmark-bot") | .id'
-   ```
-   Or from the installation URL: `.../installations/{INSTALLATION_ID}`.
+Install the App on **Rick1330/ibex-harness** only. Note the **Installation ID** from the installation URL or:
+
+```bash
+gh api /users/Rick1330/installations --jq '.installations[] | select(.app_slug=="ibexharness-benchmark-bot") | .id'
+```
 
 ## 3. Bot repo secrets
 
-In `Rick1330/ibexharness-benchmark-bot` → **Settings → Secrets → Actions**:
+`Rick1330/ibexharness-benchmark-bot` → Settings → Secrets → Actions:
 
 | Secret | Value |
 | --- | --- |
-| `APP_ID` | GitHub App ID |
-| `APP_PRIVATE_KEY` | Full PEM contents (including `BEGIN`/`END` lines) |
-| `INSTALLATION_ID` | Installation ID for ibex-harness |
-| `HARNESS_REPO` | `Rick1330/ibex-harness` (optional override; default in workflow) |
+| `APP_ID` | App ID |
+| `APP_PRIVATE_KEY` | PEM private key |
+| `INSTALLATION_ID` | Installation ID |
 
-## 4. Dispatch token (harness repo)
+Set repo variable `BOT_RELEASE_SHA` to a reviewed commit on `main` after each release.
 
-Create a **fine-grained PAT** (or classic PAT with minimal scope):
+## 4. Harness repo secrets and variables
 
-- Resource owner: Rick1330
-- Repository access: `ibexharness-benchmark-bot` only
-- Permissions: **Contents: Read**, **Metadata: Read** (needed for `repository_dispatch`)
-
-Store in **ibex-harness** repo secret:
+**Secrets** (`ibex-harness`):
 
 | Secret | Value |
 | --- | --- |
-| `BENCHMARK_BOT_DISPATCH_TOKEN` | The PAT |
+| `BENCHMARK_BOT_DISPATCH_TOKEN` | Fine-grained PAT: read on `ibexharness-benchmark-bot` (for `repository_dispatch`) |
+| `BENCHMARK_BOT_APP_ID` | Same App ID |
+| `BENCHMARK_BOT_APP_PRIVATE_KEY` | Same PEM (posts PR comments as the App, not `github-actions[bot]`) |
+| `BENCHMARK_BOT_INSTALLATION_ID` | Same installation ID |
 
-## 5. Enable harness integration
-
-In **ibex-harness** → **Settings → Secrets and variables → Actions → Variables**:
+**Variables:**
 
 | Variable | Value |
 | --- | --- |
 | `BENCHMARK_BOT_ENABLED` | `true` |
-| `BENCHMARK_BOT_SHA` | Pinned commit SHA of this repo (supply-chain pin for PR comments) |
+| `BENCHMARK_BOT_SHA` | Same pinned commit as `BOT_RELEASE_SHA` |
 
-## 6. Verify
+## 5. Verify
 
-1. Run ibex-harness **Benchmarks** workflow on `main` (workflow_dispatch).
-2. Confirm `notify-benchmark-bot` job succeeds.
-3. Confirm **publish-benchmark-data** workflow runs in this repo.
-4. Merge the opened data PR on ibex-harness after CI passes.
+1. Run harness **Benchmarks** on `main`.
+2. Confirm bot **publish-benchmark-data** workflow opens a data PR.
+3. Open a harness PR benchmark run — comment should show the IBEX App avatar and mark in the body.
 
-## Key rotation
-
-See [`RUNBOOK.md`](RUNBOOK.md#private-key-rotation).
+Key rotation: [RUNBOOK.md](RUNBOOK.md).

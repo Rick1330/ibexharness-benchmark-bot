@@ -7,6 +7,21 @@ pub use sanitize::{
 };
 
 const DOCS_BASE: &str = "https://docs.ibexharness.com/benchmarks/history";
+const BRAND_MARK_LIGHT: &str =
+    "https://raw.githubusercontent.com/Rick1330/ibexharness-benchmark-bot/main/docs/brand/ibex-mark-light.png";
+const BRAND_MARK_DARK: &str =
+    "https://raw.githubusercontent.com/Rick1330/ibexharness-benchmark-bot/main/docs/brand/ibex-mark-dark.png";
+
+fn brand_header() -> String {
+    format!(
+        r#"<p align="left">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="{BRAND_MARK_DARK}">
+    <img alt="IBEX Harness" src="{BRAND_MARK_LIGHT}" width="28" height="28">
+  </picture>
+</p>"#
+    )
+}
 
 pub fn render_pr_comment(data: &BenchmarkData, gate: &GateResult) -> Result<String, String> {
     let run = data
@@ -25,6 +40,8 @@ pub fn render_pr_comment(data: &BenchmarkData, gate: &GateResult) -> Result<Stri
         .unwrap_or_else(|| "?".to_string());
 
     let sections = vec![
+        brand_header(),
+        String::new(),
         format!("## Benchmark Results — Run #{run_number}"),
         String::new(),
         format!(
@@ -83,6 +100,8 @@ pub fn render_data_pr_body(
     );
 
     let mut lines = vec![
+        brand_header(),
+        String::new(),
         "## Automated benchmark data update".to_string(),
         String::new(),
         format!(
