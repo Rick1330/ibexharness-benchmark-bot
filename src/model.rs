@@ -79,5 +79,6 @@ pub struct WorkflowRun {
     pub head_sha: Option<String>,
     pub run_number: Option<i64>,
     pub name: Option<String>,
+    pub path: Option<String>,
     pub html_url: Option<String>,
 }

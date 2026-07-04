@@ -3,12 +3,17 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+use crate::config::resolve_harness_repo;
 use crate::error::{bot_err, Result};
 use crate::github::{installation_token, GitHubClient};
 use crate::model::{BenchmarkData, GateResult};
 use crate::publish;
 use crate::render::render_pr_comment;
 use crate::verify;
+
+fn locked_repo(repo: &str) -> Result<&str> {
+    resolve_harness_repo(repo).map_err(bot_err)
+}
 
 #[derive(Parser)]
 #[command(name = "ibex-benchmark-bot", about = "IBEX Harness benchmark bot")]
@@ -60,9 +65,10 @@ pub enum Commands {
 pub async fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Commands::VerifyDispatch { payload, repo } => {
+            let repo = locked_repo(&repo)?;
             let parsed = verify::parse_payload_json(&payload)?;
             let client = app_client().await?;
-            verify::verify_dispatch(&client, &repo, &parsed).await?;
+            verify::verify_dispatch(&client, repo, &parsed).await?;
             println!("{{\"ok\":true}}");
         }
         Commands::Publish {
@@ -70,9 +76,10 @@ pub async fn run(cli: Cli) -> Result<()> {
             repo,
             dry_run,
         } => {
+            let repo = locked_repo(&repo)?;
             let parsed = verify::parse_payload_json(&payload)?;
             let client = app_client().await?;
-            let result = publish::publish_benchmark_data(&client, &repo, &parsed, dry_run).await?;
+            let result = publish::publish_benchmark_data(&client, repo, &parsed, dry_run).await?;
             println!(
                 "{}",
                 serde_json::json!({
@@ -135,6 +142,7 @@ fn render_comment_from_paths(benchmark_data: &PathBuf, gate_result: &PathBuf) ->
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &PathBuf) -> Result<T> {
-    let bytes = fs::read(path).map_err(|err| bot_err(format!("read {} failed: {err}", path.display())))?;
+    let bytes =
+        fs::read(path).map_err(|err| bot_err(format!("read {} failed: {err}", path.display())))?;
     serde_json::from_slice(&bytes).map_err(|err| bot_err(format!("json decode failed: {err}")))
 }

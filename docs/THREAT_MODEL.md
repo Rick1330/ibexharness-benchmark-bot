@@ -28,43 +28,43 @@ Trusted:   Actions API run record, validated artifact JSON, App committer identi
 
 **Risk:** Attacker triggers publish with fake run_id/sha.
 
-**Mitigation:** `verify_dispatch.py` re-fetches run via App token. Requires `conclusion=success`, `head_branch=main`, matching `head_sha`, workflow name `Benchmarks`. Payload alone is never sufficient.
+**Mitigation:** `verify.rs` re-fetches run via App token. Requires `conclusion=success`, `head_branch=main`, matching `head_sha`, exact workflow name `Benchmarks`, and workflow path `.github/workflows/benchmark.yml`. Payload alone is never sufficient.
 
 ### T3: Artifact tampering
 
 **Risk:** Modified benchmark JSON committed to main.
 
-**Mitigation:** `validate_published_data.py` schema + bounds checks. Run metadata cross-check (`run_url`, `sha`, `run_number`). Manual PR review + CODEOWNERS on harness.
+**Mitigation:** `validate.rs` schema + bounds checks. `cross_check_artifact_run` binds `runs[0]` to verified workflow metadata. `artifact.rs` allowlists zip entries and validates `badge.svg`. Manual PR review + CODEOWNERS on harness.
 
 ### T4: Stolen App private key
 
 **Risk:** Persistent write access to harness via App.
 
-**Mitigation:** Key only in bot repo secrets. Branch protection on bot repo for workflow/credential changes. Documented rotation in RUNBOOK. Minimal App permissions.
+**Mitigation:** Key only in bot repo secrets. Branch protection on bot repo for workflow/credential changes. Documented rotation in RUNBOOK. Minimal App permissions. Publish workflow checks out `vars.BOT_RELEASE_SHA` only.
 
 ### T5: Supply chain — comment renderer
 
 **Risk:** Malicious code in renderer executed during harness CI.
 
-**Mitigation:** Harness pins bot repo commit SHA (not branch/tag). Renderer is pure JSON→Markdown; no network, no secrets, no `eval`. Unit tests + CODEOWNERS on renderer changes.
+**Mitigation:** Harness pins bot repo commit SHA via `BENCHMARK_BOT_SHA` (no `main` fallback). Renderer is pure JSON→Markdown; no network, no secrets. Unit tests + CODEOWNERS on renderer changes.
 
 ### T6: Markdown injection in PR comments
 
-**Risk:** User-controlled SHA/branch breaks comment formatting or phishing links.
+**Risk:** User-controlled SHA/branch/gate names break comment formatting or phishing links.
 
-**Mitigation:** `sanitize.mjs` strips control chars; SHAs validated as hex; URLs built from fixed templates only.
+**Mitigation:** `render/sanitize.rs` strips control chars, escapes markdown-active characters, validates gate names with allowlist regex, validates SHAs as hex; URLs built from fixed templates only.
 
 ### T7: Replay dispatch
 
-**Risk:** Duplicate data PRs for same benchmark run.
+**Risk:** Duplicate or stale data PRs for same benchmark run.
 
-**Mitigation:** Idempotency: skip if open PR exists for branch `chore/bench-data-{run_number}` or label `benchmark-data` + matching SHA in body.
+**Mitigation:** Idempotency checks open PR by branch `chore/bench-data-{run_number}` and label `benchmark-data` with matching SHA in body. `ensure_not_replay` rejects `run_number` not newer than published max or duplicate `head_sha` on main. Workflow concurrency cancels in-progress duplicate jobs.
 
 ### T8: github.actor / author-email bypass
 
 **Risk:** Skip security checks via forgeable metadata.
 
-**Mitigation:** Never used for security gates (Sonar S8232). Removed from harness in PR #177.
+**Mitigation:** Never used for security gates. Removed from harness in PR #177.
 
 ### T9: Auto-merge bypass
 
@@ -83,4 +83,6 @@ Trusted:   Actions API run record, validated artifact JSON, App committer identi
 - [ ] No secrets in logs or workflow outputs
 - [ ] `persist-credentials: false` on untrusted checkouts
 - [ ] Action pins are full 40-char SHAs
-- [ ] Renderer pin updated deliberately in harness workflow
+- [ ] `BOT_RELEASE_SHA` and harness `BENCHMARK_BOT_SHA` updated deliberately
+- [ ] `cargo audit` clean in CI
+- [ ] Security unit tests pass (`verify`, `validate`, `sanitize`, `artifact`)
