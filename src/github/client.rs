@@ -1,5 +1,3 @@
-use std::path::Path;
-
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 use reqwest::StatusCode;
@@ -47,8 +45,8 @@ impl GitHubClient {
 
         if !response.status().is_success() {
             return Err(bot_err(format!(
-                "GET {path} failed: {}",
-                response.text().await.unwrap_or_default()
+                "GET {path} failed: status {}",
+                response.status()
             )));
         }
 
@@ -142,6 +140,67 @@ impl GitHubClient {
         )
         .await?;
         Ok(())
+    }
+
+    pub async fn get_file_bytes(
+        &self,
+        owner: &str,
+        repo: &str,
+        path: &str,
+        git_ref: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        let url = format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={git_ref}");
+        let response = self
+            .http
+            .get(url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .header(ACCEPT, "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", API_VERSION)
+            .header(USER_AGENT, "ibexharness-benchmark-bot")
+            .send()
+            .await
+            .map_err(|err| bot_err(format!("contents get failed: {err}")))?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            return Err(bot_err(format!(
+                "contents get failed: status {}",
+                response.status()
+            )));
+        }
+        let value: Value = response
+            .json()
+            .await
+            .map_err(|err| bot_err(format!("contents decode failed: {err}")))?;
+        let encoded = value
+            .get("content")
+            .and_then(|item| item.as_str())
+            .ok_or_else(|| bot_err("contents missing content".to_string()))?;
+        let bytes = STANDARD
+            .decode(encoded.replace('\n', ""))
+            .map_err(|err| bot_err(format!("contents base64 decode failed: {err}")))?;
+        Ok(Some(bytes))
+    }
+
+    pub async fn find_labeled_pr_with_sha(
+        &self,
+        owner: &str,
+        repo: &str,
+        label: &str,
+        head_sha: &str,
+    ) -> Result<Option<Value>> {
+        let pulls: Vec<Value> = self
+            .get_json(&format!(
+                "/repos/{owner}/{repo}/issues?state=open&labels={label}"
+            ))
+            .await?;
+        Ok(pulls.into_iter().find(|item| {
+            item.get("body")
+                .and_then(|body| body.as_str())
+                .is_some_and(|body| body.contains(head_sha))
+        }))
     }
 
     pub async fn main_sha(&self, owner: &str, repo: &str) -> Result<String> {
@@ -303,30 +362,4 @@ pub fn split_repo(full_name: &str) -> Result<(&str, &str)> {
         .split_once('/')
         .ok_or_else(|| bot_err(format!("invalid repo: {full_name}")))?;
     Ok((owner, repo))
-}
-
-pub fn extract_artifact_paths(work_dir: &Path) -> Result<(std::path::PathBuf, std::path::PathBuf)> {
-    let json = find_file(work_dir, "benchmark-data.json")
-        .ok_or_else(|| bot_err("benchmark-data.json not in artifact".to_string()))?;
-    let badge = find_file(work_dir, "badge.svg")
-        .ok_or_else(|| bot_err("badge.svg not in artifact".to_string()))?;
-    Ok((json, badge))
-}
-
-fn find_file(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
-    if !dir.is_dir() {
-        return None;
-    }
-    for entry in std::fs::read_dir(dir).ok()? {
-        let entry = entry.ok()?;
-        let path = entry.path();
-        if path.is_dir() {
-            if let Some(found) = find_file(&path, name) {
-                return Some(found);
-            }
-        } else if path.file_name().and_then(|file| file.to_str()) == Some(name) {
-            return Some(path);
-        }
-    }
-    None
 }

@@ -4,29 +4,42 @@
 
 1. ibex-harness **Benchmarks** completes on `main` (schedule, push, or manual).
 2. `notify-benchmark-bot` sends `repository_dispatch` to this repo.
-3. **publish-benchmark-data** workflow verifies run, validates artifact, opens PR on ibex-harness.
+3. **publish-benchmark-data** workflow checks out `vars.BOT_RELEASE_SHA`, verifies run, validates artifact, opens PR on ibex-harness.
 4. Maintainer merges data PR after harness CI is green.
+
+## Release pinning (`BOT_RELEASE_SHA`)
+
+After each security-reviewed merge to `main`:
+
+1. Note the squash merge commit SHA on `main`.
+2. Set bot repo variable `BOT_RELEASE_SHA` to that SHA.
+3. Set harness variable `BENCHMARK_BOT_SHA` to the same SHA (comment renderer pin).
+4. Run a `workflow_dispatch` dry-run publish to confirm the pinned binary works.
+
+Never run publish workflows against a floating branch ref.
 
 ## Manual re-publish
 
 When a publish failed but the harness benchmark run succeeded:
 
-1. Open **ibexharness-benchmark-bot** → Actions → **Publish benchmark data** → **Run workflow**.
+1. Open **ibexharness-benchmark-bot** → Actions → **Publish benchmark data** → **Run workflow** (requires `publish` environment approval if configured).
 2. Inputs:
    - `run_id`: harness Actions run ID
    - `head_sha`: commit SHA from that run
    - `run_number`: workflow run number (not run ID)
+   - `dry_run`: `true` first to validate only
 3. Workflow verifies and opens PR (or skips if idempotent duplicate).
 
 ## Failure: verify_dispatch rejected run
 
-**Symptoms:** Workflow fails at "Verify dispatch payload".
+**Symptoms:** Workflow fails at verify step.
 
 **Checks:**
 - Run exists and `conclusion == success`
 - Run is on `main` branch
-- Workflow file name is `Benchmarks`
-- `head_sha` matches payload
+- Workflow name is exactly `Benchmarks`
+- Workflow path is `.github/workflows/benchmark.yml`
+- `head_sha` and `run_number` match payload
 
 **Fix:** Re-dispatch with correct payload or use manual `workflow_dispatch`.
 
@@ -40,12 +53,14 @@ When a publish failed but the harness benchmark run succeeded:
 
 ## Failure: validation rejected JSON
 
-**Symptoms:** `validate_published_data.py` exit non-zero.
+**Symptoms:** `validate.rs` / publish step exits non-zero.
 
 **Checks:**
 - `run_number` is workflow number, not run ID
-- k6 p99 within bounds
+- `runs[0]` sha/run_url match verified workflow run
+- k6 p99 and `error_rate` within bounds
 - Schema version == 1
+- `badge.svg` passes SVG safety checks
 
 **Fix:** Fix harness benchmark pipeline; do not bypass validation.
 
@@ -53,7 +68,7 @@ When a publish failed but the harness benchmark run succeeded:
 
 1. GitHub App settings → **Generate a new private key**.
 2. Update bot repo secret `APP_PRIVATE_KEY` with new PEM.
-3. Run a test `workflow_dispatch` publish.
+3. Run a test `workflow_dispatch` publish with `dry_run=true`.
 4. Revoke old private key in App settings.
 
 ## Dispatch token rotation
@@ -66,13 +81,22 @@ When a publish failed but the harness benchmark run succeeded:
 
 Set ibex-harness variable `BENCHMARK_BOT_ENABLED` to `false`. Notify job skips; no dispatches sent.
 
+## Incident response
+
+If `APP_PRIVATE_KEY` or dispatch PAT may be compromised:
+
+1. Set `BENCHMARK_BOT_ENABLED=false` immediately.
+2. Revoke compromised credential.
+3. Review open `benchmark-data` PRs and recent App audit log entries.
+4. Rotate credentials per sections above before re-enabling.
+
 ## Alerts
 
 Monitor:
 - Failed **publish-benchmark-data** workflow runs
 - Open `benchmark-data` PRs older than 7 days unmerged
 
-No external paid alerting service required — use GitHub email notifications for workflow failures.
+Use GitHub email notifications for workflow failures.
 
 ## Cutover verification (post-deploy)
 
@@ -80,4 +104,4 @@ After enabling the bot:
 
 1. Confirm two weekly benchmark cycles produce bot PRs.
 2. Confirm docs site history page shows new runs after merge.
-3. Confirm PR benchmark comments use shared renderer (rich format).
+3. Confirm PR benchmark comments use pinned Rust renderer (rich format).

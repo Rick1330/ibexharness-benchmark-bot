@@ -1,7 +1,7 @@
 mod sanitize;
 
 use crate::model::{BenchmarkData, BenchmarkRun, GateResult, StageMetrics};
-pub use sanitize::{escape_cell, format_delta, format_number, sanitize_branch, sanitize_sha, status_emoji};
+pub use sanitize::{escape_cell, format_delta, format_number, sanitize_branch, sanitize_gate_name, sanitize_sha, status_emoji};
 
 const DOCS_BASE: &str = "https://docs.ibexharness.com/benchmarks/history";
 
@@ -118,7 +118,7 @@ fn render_gate_table(gate: &GateResult) -> String {
         .iter()
         .map(|check| {
             vec![
-                check.name.clone().unwrap_or_else(|| "—".to_string()),
+                sanitize_gate_name(check.name.as_deref()),
                 format_number(check.value),
                 format_number(check.limit),
                 if check.ok.unwrap_or(false) {

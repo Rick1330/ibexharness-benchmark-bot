@@ -10,6 +10,10 @@ use crate::publish;
 use crate::render::render_pr_comment;
 use crate::verify;
 
+fn locked_repo(repo: &str) -> Result<&str> {
+    resolve_harness_repo(repo).map_err(bot_err)
+}
+
 #[derive(Parser)]
 #[command(name = "ibex-benchmark-bot", about = "IBEX Harness benchmark bot")]
 pub struct Cli {
@@ -60,9 +64,10 @@ pub enum Commands {
 pub async fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Commands::VerifyDispatch { payload, repo } => {
+            let repo = locked_repo(&repo)?;
             let parsed = verify::parse_payload_json(&payload)?;
             let client = app_client().await?;
-            verify::verify_dispatch(&client, &repo, &parsed).await?;
+            verify::verify_dispatch(&client, repo, &parsed).await?;
             println!("{{\"ok\":true}}");
         }
         Commands::Publish {
@@ -70,9 +75,10 @@ pub async fn run(cli: Cli) -> Result<()> {
             repo,
             dry_run,
         } => {
+            let repo = locked_repo(&repo)?;
             let parsed = verify::parse_payload_json(&payload)?;
             let client = app_client().await?;
-            let result = publish::publish_benchmark_data(&client, &repo, &parsed, dry_run).await?;
+            let result = publish::publish_benchmark_data(&client, repo, &parsed, dry_run).await?;
             println!(
                 "{}",
                 serde_json::json!({

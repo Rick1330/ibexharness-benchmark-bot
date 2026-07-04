@@ -21,7 +21,7 @@ on:
 
 concurrency:
   group: publish-benchmark-${{ github.event.client_payload.run_id || github.event.inputs.run_id }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -30,11 +30,21 @@ jobs:
   publish:
     name: publish-benchmark-data
     runs-on: ubuntu-latest
+    environment: publish
     permissions:
       contents: read
     steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
+        with:
+          egress-policy: audit
+
+      - name: Require pinned release
+        run: test -n "${{ vars.BOT_RELEASE_SHA }}"
+
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          ref: ${{ vars.BOT_RELEASE_SHA }}
           persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
@@ -66,7 +76,7 @@ jobs:
           INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
         run: |
           ./target/release/ibex-benchmark-bot verify-dispatch \
-            --payload '{"run_id":${{ github.event.inputs.run_id }},"head_sha":"${{ github.event.inputs.head_sha }}","run_number":${{ github.event.inputs.run_number }}}'
+            --payload '${{ toJson(github.event.inputs) }}'
 
       - name: Publish benchmark data PR (repository_dispatch)
         if: github.event_name == 'repository_dispatch'
@@ -86,7 +96,7 @@ jobs:
           INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
         run: |
           ./target/release/ibex-benchmark-bot publish \
-            --payload '{"run_id":${{ github.event.inputs.run_id }},"head_sha":"${{ github.event.inputs.head_sha }}","run_number":${{ github.event.inputs.run_number }}}'
+            --payload '${{ toJson(github.event.inputs) }}'
 
       - name: Dry run validation only
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
@@ -96,13 +106,18 @@ jobs:
           INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
         run: |
           ./target/release/ibex-benchmark-bot publish \
-            --payload '{"run_id":${{ github.event.inputs.run_id }},"head_sha":"${{ github.event.inputs.head_sha }}","run_number":${{ github.event.inputs.run_number }}}' \
+            --payload '${{ toJson(github.event.inputs) }}' \
             --dry-run
 
       - name: Workflow summary
         if: always()
         run: |
           {
-            echo "## Benchmark publish"
+            echo "## Benchmark publish audit"
             echo "- event: ${{ github.event_name }}"
+            echo "- actor: ${{ github.actor }}"
+            echo "- bot_release_sha: ${{ vars.BOT_RELEASE_SHA }}"
+            echo "- run_id: ${{ github.event.client_payload.run_id || github.event.inputs.run_id }}"
+            echo "- head_sha: ${{ github.event.client_payload.head_sha || github.event.inputs.head_sha }}"
+            echo "- run_number: ${{ github.event.client_payload.run_number || github.event.inputs.run_number }}"
           } >> "$GITHUB_STEP_SUMMARY"
