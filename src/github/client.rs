@@ -56,7 +56,12 @@ impl GitHubClient {
             .map_err(|err| bot_err(format!("GET {path} decode failed: {err}")))
     }
 
-    pub async fn get_workflow_run(&self, owner: &str, repo: &str, run_id: i64) -> Result<WorkflowRun> {
+    pub async fn get_workflow_run(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: i64,
+    ) -> Result<WorkflowRun> {
         self.get_json(&format!("/repos/{owner}/{repo}/actions/runs/{run_id}"))
             .await
     }
@@ -87,9 +92,16 @@ impl GitHubClient {
         Ok(true)
     }
 
-    pub async fn download_artifact_zip(&self, owner: &str, repo: &str, run_id: i64) -> Result<Vec<u8>> {
+    pub async fn download_artifact_zip(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: i64,
+    ) -> Result<Vec<u8>> {
         let artifacts: Value = self
-            .get_json(&format!("/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts"))
+            .get_json(&format!(
+                "/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts"
+            ))
             .await?;
         let items = artifacts
             .get("artifacts")
@@ -104,7 +116,9 @@ impl GitHubClient {
             .and_then(|value| value.as_i64())
             .ok_or_else(|| bot_err("artifact id missing".to_string()))?;
 
-        let url = format!("https://api.github.com/repos/{owner}/{repo}/actions/artifacts/{artifact_id}/zip");
+        let url = format!(
+            "https://api.github.com/repos/{owner}/{repo}/actions/artifacts/{artifact_id}/zip"
+        );
         let response = self
             .http
             .get(url)
@@ -130,7 +144,13 @@ impl GitHubClient {
             .map_err(|err| bot_err(format!("artifact read failed: {err}")))
     }
 
-    pub async fn create_branch(&self, owner: &str, repo: &str, branch: &str, sha: &str) -> Result<()> {
+    pub async fn create_branch(
+        &self,
+        owner: &str,
+        repo: &str,
+        branch: &str,
+        sha: &str,
+    ) -> Result<()> {
         self.post_json(
             &format!("/repos/{owner}/{repo}/git/refs"),
             serde_json::json!({
@@ -149,7 +169,8 @@ impl GitHubClient {
         path: &str,
         git_ref: &str,
     ) -> Result<Option<Vec<u8>>> {
-        let url = format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={git_ref}");
+        let url =
+            format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={git_ref}");
         let response = self
             .http
             .get(url)
@@ -214,8 +235,15 @@ impl GitHubClient {
             .ok_or_else(|| bot_err("main sha missing".to_string()))
     }
 
-    pub async fn file_sha(&self, owner: &str, repo: &str, path: &str, branch: &str) -> Result<Option<String>> {
-        let url = format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={branch}");
+    pub async fn file_sha(
+        &self,
+        owner: &str,
+        repo: &str,
+        path: &str,
+        branch: &str,
+    ) -> Result<Option<String>> {
+        let url =
+            format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={branch}");
         let response = self
             .http
             .get(url)
@@ -240,7 +268,10 @@ impl GitHubClient {
             .json()
             .await
             .map_err(|err| bot_err(format!("contents decode failed: {err}")))?;
-        Ok(value.get("sha").and_then(|sha| sha.as_str()).map(str::to_owned))
+        Ok(value
+            .get("sha")
+            .and_then(|sha| sha.as_str())
+            .map(str::to_owned))
     }
 
     pub async fn put_file(&self, owner: &str, repo: &str, req: PutFileRequest<'_>) -> Result<()> {
@@ -252,8 +283,11 @@ impl GitHubClient {
         if let Some(sha) = req.file_sha {
             body["sha"] = Value::String(sha.to_string());
         }
-        self.put_json(&format!("/repos/{owner}/{repo}/contents/{}", req.path), body)
-            .await?;
+        self.put_json(
+            &format!("/repos/{owner}/{repo}/contents/{}", req.path),
+            body,
+        )
+        .await?;
         Ok(())
     }
 
@@ -278,7 +312,13 @@ impl GitHubClient {
         .await
     }
 
-    pub async fn add_labels(&self, owner: &str, repo: &str, issue_number: i64, labels: &[&str]) -> Result<()> {
+    pub async fn add_labels(
+        &self,
+        owner: &str,
+        repo: &str,
+        issue_number: i64,
+        labels: &[&str],
+    ) -> Result<()> {
         let _ = self
             .post_json(
                 &format!("/repos/{owner}/{repo}/issues/{issue_number}/labels"),
@@ -288,14 +328,27 @@ impl GitHubClient {
         Ok(())
     }
 
-    pub async fn find_open_pr(&self, owner: &str, repo: &str, branch: &str) -> Result<Option<Value>> {
+    pub async fn find_open_pr(
+        &self,
+        owner: &str,
+        repo: &str,
+        branch: &str,
+    ) -> Result<Option<Value>> {
         let pulls: Vec<Value> = self
-            .get_json(&format!("/repos/{owner}/{repo}/pulls?state=open&head={owner}:{branch}"))
+            .get_json(&format!(
+                "/repos/{owner}/{repo}/pulls?state=open&head={owner}:{branch}"
+            ))
             .await?;
         Ok(pulls.into_iter().next())
     }
 
-    pub async fn post_issue_comment(&self, owner: &str, repo: &str, issue: i64, body: &str) -> Result<()> {
+    pub async fn post_issue_comment(
+        &self,
+        owner: &str,
+        repo: &str,
+        issue: i64,
+        body: &str,
+    ) -> Result<()> {
         self.post_json(
             &format!("/repos/{owner}/{repo}/issues/{issue}/comments"),
             serde_json::json!({ "body": body }),

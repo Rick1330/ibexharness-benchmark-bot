@@ -141,6 +141,7 @@ fn render_comment_from_paths(benchmark_data: &PathBuf, gate_result: &PathBuf) ->
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(path: &PathBuf) -> Result<T> {
-    let bytes = fs::read(path).map_err(|err| bot_err(format!("read {} failed: {err}", path.display())))?;
+    let bytes =
+        fs::read(path).map_err(|err| bot_err(format!("read {} failed: {err}", path.display())))?;
     serde_json::from_slice(&bytes).map_err(|err| bot_err(format!("json decode failed: {err}")))
 }

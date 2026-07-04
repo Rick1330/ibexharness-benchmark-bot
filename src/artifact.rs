@@ -19,16 +19,20 @@ pub struct ExtractedArtifact {
 
 pub fn extract_artifact_zip(bytes: &[u8]) -> Result<ExtractedArtifact> {
     if bytes.len() > MAX_ZIP_BYTES {
-        return Err(bot_err(format!("artifact zip exceeds {MAX_ZIP_BYTES} bytes")));
+        return Err(bot_err(format!(
+            "artifact zip exceeds {MAX_ZIP_BYTES} bytes"
+        )));
     }
 
     let dir = tempfile::tempdir().map_err(|err| bot_err(format!("tempdir failed: {err}")))?;
     let root = dir.path().to_path_buf();
-    let mut archive =
-        ZipArchive::new(Cursor::new(bytes)).map_err(|err| bot_err(format!("zip open failed: {err}")))?;
+    let mut archive = ZipArchive::new(Cursor::new(bytes))
+        .map_err(|err| bot_err(format!("zip open failed: {err}")))?;
 
     if archive.len() > MAX_ENTRIES {
-        return Err(bot_err(format!("artifact zip exceeds {MAX_ENTRIES} entries")));
+        return Err(bot_err(format!(
+            "artifact zip exceeds {MAX_ENTRIES} entries"
+        )));
     }
 
     let mut json_path = None;
@@ -68,16 +72,21 @@ pub fn extract_artifact_zip(bytes: &[u8]) -> Result<ExtractedArtifact> {
         }
     }
 
-    let json_path = json_path.ok_or_else(|| bot_err("benchmark-data.json not in artifact".to_string()))?;
+    let json_path =
+        json_path.ok_or_else(|| bot_err("benchmark-data.json not in artifact".to_string()))?;
     let badge_path = badge_path.ok_or_else(|| bot_err("badge.svg not in artifact".to_string()))?;
-    Ok(ExtractedArtifact { json_path, badge_path })
+    Ok(ExtractedArtifact {
+        json_path,
+        badge_path,
+    })
 }
 
 pub fn validate_badge_svg(bytes: &[u8]) -> Result<()> {
     if bytes.len() > 64 * 1024 {
         return Err(bot_err("badge.svg exceeds 64 KiB".to_string()));
     }
-    let text = std::str::from_utf8(bytes).map_err(|_| bot_err("badge.svg must be utf-8".to_string()))?;
+    let text =
+        std::str::from_utf8(bytes).map_err(|_| bot_err("badge.svg must be utf-8".to_string()))?;
     let lower = text.to_ascii_lowercase();
     let forbidden = [
         "<script",
@@ -91,7 +100,9 @@ pub fn validate_badge_svg(bytes: &[u8]) -> Result<()> {
     ];
     for needle in forbidden {
         if lower.contains(needle) {
-            return Err(bot_err(format!("badge.svg contains forbidden pattern: {needle}")));
+            return Err(bot_err(format!(
+                "badge.svg contains forbidden pattern: {needle}"
+            )));
         }
     }
     if !lower.contains("<svg") {
@@ -113,7 +124,8 @@ fn reject_unsafe_zip_path(path: &Path) -> Result<()> {
 }
 
 fn write_zip_entry<R: Read>(entry: &mut R, dest: &Path) -> Result<()> {
-    let mut file = fs::File::create(dest).map_err(|err| bot_err(format!("write {} failed: {err}", dest.display())))?;
+    let mut file = fs::File::create(dest)
+        .map_err(|err| bot_err(format!("write {} failed: {err}", dest.display())))?;
     copy(entry, &mut file).map_err(|err| bot_err(format!("zip extract failed: {err}")))?;
     Ok(())
 }

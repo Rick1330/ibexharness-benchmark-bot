@@ -11,8 +11,8 @@ const EXPECTED_BRANCH: &str = "main";
 const EXPECTED_CONCLUSION: &str = "success";
 
 pub fn parse_payload_json(raw: &str) -> Result<DispatchPayload> {
-    let value: Value =
-        serde_json::from_str(raw).map_err(|err| bot_err(format!("invalid dispatch payload: {err}")))?;
+    let value: Value = serde_json::from_str(raw)
+        .map_err(|err| bot_err(format!("invalid dispatch payload: {err}")))?;
     let run_id = parse_i64_field(&value, "run_id")?;
     let run_number = parse_i64_field(&value, "run_number")?;
     let head_sha = value
@@ -58,10 +58,14 @@ pub fn verify_workflow_run(run: &WorkflowRun) -> Result<()> {
         )));
     }
     if run.head_branch.as_deref() != Some(EXPECTED_BRANCH) {
-        return Err(bot_err(format!("run head_branch must be {EXPECTED_BRANCH}")));
+        return Err(bot_err(format!(
+            "run head_branch must be {EXPECTED_BRANCH}"
+        )));
     }
     if run.name.as_deref() != Some(EXPECTED_WORKFLOW_NAME) {
-        return Err(bot_err(format!("workflow name must be {EXPECTED_WORKFLOW_NAME}")));
+        return Err(bot_err(format!(
+            "workflow name must be {EXPECTED_WORKFLOW_NAME}"
+        )));
     }
     if run.path.as_deref() != Some(EXPECTED_WORKFLOW_PATH) {
         return Err(bot_err(format!(
@@ -78,9 +82,7 @@ pub async fn verify_dispatch(
 ) -> Result<WorkflowRun> {
     let head_sha = require_sha(&payload.head_sha)?;
     let (owner, repo) = crate::github::split_repo(repo_full)?;
-    let run = client
-        .get_workflow_run(owner, repo, payload.run_id)
-        .await?;
+    let run = client.get_workflow_run(owner, repo, payload.run_id).await?;
 
     verify_workflow_run(&run)?;
 

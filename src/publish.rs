@@ -35,7 +35,8 @@ pub async fn publish_benchmark_data(
         .as_deref()
         .ok_or_else(|| bot_err("verified run missing head_sha".to_string()))?;
 
-    if let Some(existing) = find_existing_publish_pr(client, owner, repo, &branch, head_sha).await? {
+    if let Some(existing) = find_existing_publish_pr(client, owner, repo, &branch, head_sha).await?
+    {
         return Ok(PublishResult {
             skipped: true,
             pr_url: existing
@@ -48,7 +49,9 @@ pub async fn publish_benchmark_data(
 
     ensure_not_replay(client, owner, repo, payload, head_sha).await?;
 
-    let zip = client.download_artifact_zip(owner, repo, payload.run_id).await?;
+    let zip = client
+        .download_artifact_zip(owner, repo, payload.run_id)
+        .await?;
     let extracted = extract_artifact_zip(&zip)?;
     validate_file(&extracted.json_path)?;
     let badge_bytes =
@@ -72,11 +75,18 @@ pub async fn publish_benchmark_data(
 
     let main_sha = client.main_sha(owner, repo).await?;
     if !client.ref_exists(owner, repo, &branch).await? {
-        client.create_branch(owner, repo, &branch, &main_sha).await?;
+        client
+            .create_branch(owner, repo, &branch, &main_sha)
+            .await?;
     }
 
-    let message = format!("chore(bench): benchmark data update (run #{})", payload.run_number);
-    let json_sha = client.file_sha(owner, repo, BENCHMARK_DATA_PATH, &branch).await?;
+    let message = format!(
+        "chore(bench): benchmark data update (run #{})",
+        payload.run_number
+    );
+    let json_sha = client
+        .file_sha(owner, repo, BENCHMARK_DATA_PATH, &branch)
+        .await?;
     let badge_sha = client.file_sha(owner, repo, BADGE_PATH, &branch).await?;
     client
         .put_file(
@@ -110,8 +120,13 @@ pub async fn publish_benchmark_data(
         run.html_url.as_deref(),
         Some(payload.run_number),
     );
-    let title = format!("chore(bench): benchmark data update (run #{})", payload.run_number);
-    let pr = client.open_pull_request(owner, repo, &branch, &title, &body).await?;
+    let title = format!(
+        "chore(bench): benchmark data update (run #{})",
+        payload.run_number
+    );
+    let pr = client
+        .open_pull_request(owner, repo, &branch, &title, &body)
+        .await?;
     if let Some(number) = pr.get("number").and_then(Value::as_i64) {
         client
             .add_labels(owner, repo, number, &["automated", BENCHMARK_DATA_LABEL])

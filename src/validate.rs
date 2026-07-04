@@ -17,8 +17,8 @@ pub fn validate_file(path: &Path) -> Result<()> {
     if bytes.len() > MAX_JSON_BYTES {
         return Err(bot_err(format!("json exceeds {MAX_JSON_BYTES} bytes")));
     }
-    let payload: BenchmarkData =
-        serde_json::from_slice(&bytes).map_err(|err| bot_err(format!("json decode failed: {err}")))?;
+    let payload: BenchmarkData = serde_json::from_slice(&bytes)
+        .map_err(|err| bot_err(format!("json decode failed: {err}")))?;
     validate_payload(&payload)
 }
 
@@ -84,11 +84,15 @@ pub fn cross_check_artifact_run(
         .ok_or_else(|| bot_err("runs[0].sha required".to_string()))?
         .to_lowercase();
     if run_sha != head_sha {
-        return Err(bot_err("runs[0].sha mismatch with verified workflow head_sha".to_string()));
+        return Err(bot_err(
+            "runs[0].sha mismatch with verified workflow head_sha".to_string(),
+        ));
     }
 
     if latest.run_number != Some(expected_run_number) {
-        return Err(bot_err("runs[0].run_number mismatch with dispatch payload".to_string()));
+        return Err(bot_err(
+            "runs[0].run_number mismatch with dispatch payload".to_string(),
+        ));
     }
 
     let marker = format!("/actions/runs/{run_id}");
@@ -97,25 +101,27 @@ pub fn cross_check_artifact_run(
         .as_deref()
         .ok_or_else(|| bot_err("runs[0].run_url required".to_string()))?;
     if !run_url.contains(&marker) {
-        return Err(bot_err("runs[0].run_url must reference verified run_id".to_string()));
+        return Err(bot_err(
+            "runs[0].run_url must reference verified run_id".to_string(),
+        ));
     }
     Ok(())
 }
 
 pub fn max_published_run_number(payload: &BenchmarkData) -> Option<i64> {
-    payload.runs.as_ref().and_then(|runs| {
-        runs.iter()
-            .filter_map(|run| run.run_number)
-            .max()
-    })
+    payload
+        .runs
+        .as_ref()
+        .and_then(|runs| runs.iter().filter_map(|run| run.run_number).max())
 }
 
 pub fn published_sha_exists(payload: &BenchmarkData, head_sha: &str) -> bool {
     let head_sha = head_sha.to_lowercase();
-    payload
-        .runs
-        .as_ref()
-        .is_some_and(|runs| runs.iter().any(|run| run.sha.as_deref().map(str::to_lowercase).as_deref() == Some(head_sha.as_str())))
+    payload.runs.as_ref().is_some_and(|runs| {
+        runs.iter().any(|run| {
+            run.sha.as_deref().map(str::to_lowercase).as_deref() == Some(head_sha.as_str())
+        })
+    })
 }
 
 fn validate_run(run: &BenchmarkRun, index: usize) -> Result<()> {
@@ -140,7 +146,9 @@ fn validate_run(run: &BenchmarkRun, index: usize) -> Result<()> {
 
 fn validate_k6(k6: Option<&crate::model::K6Metrics>, label: &str) -> Result<()> {
     let k6 = k6.ok_or_else(|| bot_err(format!("{label} required")))?;
-    let p99 = k6.p99_ms.ok_or_else(|| bot_err(format!("{label}.p99_ms required")))?;
+    let p99 = k6
+        .p99_ms
+        .ok_or_else(|| bot_err(format!("{label}.p99_ms required")))?;
     if p99 <= 0.0 || p99 > MAX_P99_MS {
         return Err(bot_err(format!("{label}.p99_ms out of bounds: {p99}")));
     }
@@ -148,7 +156,9 @@ fn validate_k6(k6: Option<&crate::model::K6Metrics>, label: &str) -> Result<()> 
         .error_rate
         .ok_or_else(|| bot_err(format!("{label}.error_rate required")))?;
     if !(0.0..=1.0).contains(&error_rate) {
-        return Err(bot_err(format!("{label}.error_rate out of bounds: {error_rate}")));
+        return Err(bot_err(format!(
+            "{label}.error_rate out of bounds: {error_rate}"
+        )));
     }
     Ok(())
 }
@@ -158,7 +168,9 @@ fn validate_run_number(run: &BenchmarkRun, label: &str) -> Result<()> {
         return Ok(());
     };
     if run_number <= 0 || run_number > MAX_RUN_NUMBER {
-        return Err(bot_err(format!("{label}.run_number out of bounds: {run_number}")));
+        return Err(bot_err(format!(
+            "{label}.run_number out of bounds: {run_number}"
+        )));
     }
     if let Some(run_id) = run_id_from_url(run.run_url.as_deref()) {
         if run_number == run_id {

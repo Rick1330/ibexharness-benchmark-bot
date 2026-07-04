@@ -1,7 +1,10 @@
 mod sanitize;
 
 use crate::model::{BenchmarkData, BenchmarkRun, GateResult, StageMetrics};
-pub use sanitize::{escape_cell, format_delta, format_number, sanitize_branch, sanitize_gate_name, sanitize_sha, status_emoji};
+pub use sanitize::{
+    escape_cell, format_delta, format_number, sanitize_branch, sanitize_gate_name, sanitize_sha,
+    status_emoji,
+};
 
 const DOCS_BASE: &str = "https://docs.ibexharness.com/benchmarks/history";
 
@@ -60,9 +63,15 @@ pub fn render_pr_comment(data: &BenchmarkData, gate: &GateResult) -> Result<Stri
     Ok(sections.join("\n"))
 }
 
-pub fn render_data_pr_body(data: &BenchmarkData, run_url: Option<&str>, run_number: Option<i64>) -> String {
+pub fn render_data_pr_body(
+    data: &BenchmarkData,
+    run_url: Option<&str>,
+    run_number: Option<i64>,
+) -> String {
     let run = data.runs.as_ref().and_then(|runs| runs.first());
-    let short_sha = run.map(resolve_short_sha).unwrap_or_else(|| sanitize_sha(None));
+    let short_sha = run
+        .map(resolve_short_sha)
+        .unwrap_or_else(|| sanitize_sha(None));
     let status = run.and_then(|r| r.status.as_deref()).unwrap_or("unknown");
     let number = run_number
         .or(run.and_then(|r| r.run_number))
@@ -70,10 +79,7 @@ pub fn render_data_pr_body(data: &BenchmarkData, run_url: Option<&str>, run_numb
         .unwrap_or_else(|| "?".to_string());
     let p99 = format!(
         "{} ms",
-        format_number(
-            run.and_then(|r| r.k6.as_ref())
-                .and_then(|k| k.p99_ms),
-        )
+        format_number(run.and_then(|r| r.k6.as_ref()).and_then(|k| k.p99_ms),)
     );
 
     let mut lines = vec![
@@ -129,10 +135,7 @@ fn render_gate_table(gate: &GateResult) -> String {
             ]
         })
         .collect();
-    markdown_table(
-        &["Check", "Value", "Limit", "Result"],
-        &rows,
-    )
+    markdown_table(&["Check", "Value", "Limit", "Result"], &rows)
 }
 
 fn render_k6_table(run: &BenchmarkRun) -> String {
@@ -181,9 +184,18 @@ fn render_stage_table(stages: Option<&StageMetrics>) -> String {
     markdown_table(
         &["Stage", "p99 (ms)"],
         &[
-            vec!["Auth LRU".to_string(), format_number(stages.auth_lru_p99_ms)],
-            vec!["Auth gRPC".to_string(), format_number(stages.auth_grpc_p99_ms)],
-            vec!["Rate limit".to_string(), format_number(stages.rate_limit_p99_ms)],
+            vec![
+                "Auth LRU".to_string(),
+                format_number(stages.auth_lru_p99_ms),
+            ],
+            vec![
+                "Auth gRPC".to_string(),
+                format_number(stages.auth_grpc_p99_ms),
+            ],
+            vec![
+                "Rate limit".to_string(),
+                format_number(stages.rate_limit_p99_ms),
+            ],
             vec![
                 "Directive resolve".to_string(),
                 format_number(stages.directive_resolve_p99_ms),
@@ -205,11 +217,21 @@ fn render_go_table(run: &BenchmarkRun) -> String {
         .go_benchmarks
         .as_ref()
         .and_then(|value| value.get("BenchmarkProxyOverhead"));
-    let ns = bench.and_then(|v| v.get("ns_per_op")).and_then(|v| v.as_f64());
-    let allocs = bench.and_then(|v| v.get("allocs_per_op")).and_then(|v| v.as_f64());
-    let bytes = bench.and_then(|v| v.get("bytes_per_op")).and_then(|v| v.as_f64());
-    let low = bench.and_then(|v| v.get("ci_95_low")).and_then(|v| v.as_f64());
-    let high = bench.and_then(|v| v.get("ci_95_high")).and_then(|v| v.as_f64());
+    let ns = bench
+        .and_then(|v| v.get("ns_per_op"))
+        .and_then(|v| v.as_f64());
+    let allocs = bench
+        .and_then(|v| v.get("allocs_per_op"))
+        .and_then(|v| v.as_f64());
+    let bytes = bench
+        .and_then(|v| v.get("bytes_per_op"))
+        .and_then(|v| v.as_f64());
+    let low = bench
+        .and_then(|v| v.get("ci_95_low"))
+        .and_then(|v| v.as_f64());
+    let high = bench
+        .and_then(|v| v.get("ci_95_high"))
+        .and_then(|v| v.as_f64());
 
     markdown_table(
         &["Metric", "Value"],
@@ -229,12 +251,24 @@ fn render_env_table(run: &BenchmarkRun) -> String {
     markdown_table(
         &["Field", "Value"],
         &[
-            vec!["Go version".to_string(), escape_cell(run.go_version.as_deref())],
-            vec!["Runner OS".to_string(), escape_cell(run.runner_os.as_deref())],
-            vec!["Runner CPU".to_string(), escape_cell(run.runner_cpu.as_deref())],
+            vec![
+                "Go version".to_string(),
+                escape_cell(run.go_version.as_deref()),
+            ],
+            vec![
+                "Runner OS".to_string(),
+                escape_cell(run.runner_os.as_deref()),
+            ],
+            vec![
+                "Runner CPU".to_string(),
+                escape_cell(run.runner_cpu.as_deref()),
+            ],
             vec!["vCPUs".to_string(), escape_cell(vcpus.as_deref())],
             vec!["RAM (GB)".to_string(), escape_cell(ram.as_deref())],
-            vec!["k6 version".to_string(), escape_cell(run.k6_version.as_deref())],
+            vec![
+                "k6 version".to_string(),
+                escape_cell(run.k6_version.as_deref()),
+            ],
         ],
     )
 }
@@ -274,15 +308,16 @@ fn resolve_short_sha(run: &BenchmarkRun) -> String {
 }
 
 fn markdown_table(headers: &[&str], rows: &[Vec<String>]) -> String {
-    let header_cells: Vec<String> = headers
-        .iter()
-        .map(|cell| escape_cell(Some(cell)))
-        .collect();
+    let header_cells: Vec<String> = headers.iter().map(|cell| escape_cell(Some(cell))).collect();
     let mut lines = vec![
         format!("| {} |", header_cells.join(" | ")),
         format!(
             "| {} |",
-            headers.iter().map(|_| "---").collect::<Vec<_>>().join(" | ")
+            headers
+                .iter()
+                .map(|_| "---")
+                .collect::<Vec<_>>()
+                .join(" | ")
         ),
     ];
     for row in rows {
