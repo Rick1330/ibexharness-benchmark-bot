@@ -118,19 +118,31 @@ pub async fn run(cli: Cli) -> Result<()> {
 }
 
 async fn app_client() -> Result<GitHubClient> {
-    let app_id = std::env::var("APP_ID").map_err(|_| bot_err("missing APP_ID".to_string()))?;
-    let private_key = std::env::var("APP_PRIVATE_KEY")
-        .map_err(|_| bot_err("missing APP_PRIVATE_KEY".to_string()))?;
-    let installation_id = std::env::var("INSTALLATION_ID")
-        .map_err(|_| bot_err("missing INSTALLATION_ID".to_string()))?;
+    let app_id = require_env("APP_ID")?;
+    let private_key = require_env("APP_PRIVATE_KEY")?;
+    let installation_id = require_env("INSTALLATION_ID")?;
     let token = installation_token(&app_id, &private_key, &installation_id).await?;
     Ok(GitHubClient::new(token))
 }
 
+fn require_env(key: &str) -> Result<String> {
+    let value = std::env::var(key).map_err(|_| bot_err(format!("missing {key}")))?;
+    if value.trim().is_empty() {
+        return Err(bot_err(format!("missing {key}")));
+    }
+    Ok(value)
+}
+
+fn env_nonempty(key: &str) -> bool {
+    std::env::var(key)
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false)
+}
+
 async fn comment_client(fallback_token: &str) -> Result<GitHubClient> {
-    let has_app = std::env::var("APP_ID").is_ok()
-        && std::env::var("APP_PRIVATE_KEY").is_ok()
-        && std::env::var("INSTALLATION_ID").is_ok();
+    let has_app = env_nonempty("APP_ID")
+        && env_nonempty("APP_PRIVATE_KEY")
+        && env_nonempty("INSTALLATION_ID");
     if has_app {
         return app_client().await;
     }
