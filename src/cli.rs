@@ -116,7 +116,7 @@ async fn app_client() -> Result<GitHubClient> {
         .map_err(|_| bot_err("missing APP_PRIVATE_KEY".to_string()))?;
     let installation_id = std::env::var("INSTALLATION_ID")
         .map_err(|_| bot_err("missing INSTALLATION_ID".to_string()))?;
-    let token = installation_token(&app_id, &private_key, &installation_id)?;
+    let token = installation_token(&app_id, &private_key, &installation_id).await?;
     Ok(GitHubClient::new(token))
 }
 

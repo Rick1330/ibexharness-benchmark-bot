@@ -13,6 +13,7 @@ pub struct BenchmarkRun {
     pub sha: Option<String>,
     pub short_sha: Option<String>,
     pub branch: Option<String>,
+    pub pr_number: Option<i64>,
     pub status: Option<String>,
     pub run_number: Option<i64>,
     pub run_url: Option<String>,

@@ -129,6 +129,7 @@ mod tests {
                 sha: Some("abc123".to_string()),
                 short_sha: Some("abc123".to_string()),
                 branch: Some("main".to_string()),
+                pr_number: None,
                 status: Some("pass".to_string()),
                 run_number: Some(12345),
                 run_url: Some("https://github.com/o/r/actions/runs/12345".to_string()),

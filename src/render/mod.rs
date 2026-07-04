@@ -21,7 +21,7 @@ pub fn render_pr_comment(data: &BenchmarkData, gate: &GateResult) -> Result<Stri
         .map(|value| value.to_string())
         .unwrap_or_else(|| "?".to_string());
 
-    let mut sections = vec![
+    let sections = vec![
         format!("## Benchmark Results — Run #{run_number}"),
         String::new(),
         format!(
@@ -68,6 +68,13 @@ pub fn render_data_pr_body(data: &BenchmarkData, run_url: Option<&str>, run_numb
         .or(run.and_then(|r| r.run_number))
         .map(|value| value.to_string())
         .unwrap_or_else(|| "?".to_string());
+    let p99 = format!(
+        "{} ms",
+        format_number(
+            run.and_then(|r| r.k6.as_ref())
+                .and_then(|k| k.p99_ms),
+        )
+    );
 
     let mut lines = vec![
         "## Automated benchmark data update".to_string(),
@@ -81,12 +88,9 @@ pub fn render_data_pr_body(data: &BenchmarkData, run_url: Option<&str>, run_numb
         markdown_table(
             &["Field", "Value"],
             &[
-                vec!["Run number", &number],
-                vec!["Head SHA", &short_sha],
-                vec![
-                    "Proxy p99",
-                    &format!("{} ms", format_number(run.and_then(|r| r.k6.as_ref()).and_then(|k| k.p99_ms))),
-                ],
+                vec!["Run number".to_string(), number],
+                vec!["Head SHA".to_string(), short_sha],
+                vec!["Proxy p99".to_string(), p99],
             ],
         ),
     ];
@@ -125,50 +129,42 @@ fn render_gate_table(gate: &GateResult) -> String {
             ]
         })
         .collect();
-    let row_refs: Vec<Vec<&str>> = rows
-        .iter()
-        .map(|row| row.iter().map(String::as_str).collect())
-        .collect();
     markdown_table(
         &["Check", "Value", "Limit", "Result"],
-        &row_refs.iter().map(|row| row.as_slice()).collect::<Vec<_>>(),
+        &rows,
     )
 }
 
 fn render_k6_table(run: &BenchmarkRun) -> String {
     let k6 = run.k6.as_ref();
+    let p50 = format!("{} ms", format_number(k6.and_then(|k| k.p50_ms)));
+    let p95 = format!("{} ms", format_number(k6.and_then(|k| k.p95_ms)));
+    let p99 = format!("{} ms", format_number(k6.and_then(|k| k.p99_ms)));
+    let p999 = format!("{} ms", format_number(k6.and_then(|k| k.p999_ms)));
+    let throughput = format!(
+        "{} req/s",
+        format_number_precise(k6.and_then(|k| k.req_per_s), 2)
+    );
+    let error_rate = format!(
+        "{}%",
+        format_number_precise(k6.and_then(|k| k.error_rate).map(|v| v * 100.0), 3)
+    );
+    let check_rate = format!(
+        "{}%",
+        format_number_precise(k6.and_then(|k| k.check_rate).map(|v| v * 100.0), 1)
+    );
+    let delta = format_delta(run.regression_vs_baseline_pct);
+
     markdown_table(
         &["Metric", "Value", "Delta vs baseline"],
         &[
-            vec!["p50", &format!("{} ms", format_number(k6.and_then(|k| k.p50_ms))), "—"],
-            vec!["p95", &format!("{} ms", format_number(k6.and_then(|k| k.p95_ms))), "—"],
-            vec![
-                "p99",
-                &format!("{} ms", format_number(k6.and_then(|k| k.p99_ms))),
-                &format_delta(run.regression_vs_baseline_pct),
-            ],
-            vec!["p999", &format!("{} ms", format_number(k6.and_then(|k| k.p999_ms))), "—"],
-            vec![
-                "Throughput",
-                &format!("{} req/s", format_number_precise(k6.and_then(|k| k.req_per_s), 2)),
-                "—",
-            ],
-            vec![
-                "Error rate",
-                &format!(
-                    "{}%",
-                    format_number_precise(k6.and_then(|k| k.error_rate).map(|v| v * 100.0), 3)
-                ),
-                "—",
-            ],
-            vec![
-                "Check rate",
-                &format!(
-                    "{}%",
-                    format_number_precise(k6.and_then(|k| k.check_rate).map(|v| v * 100.0), 1)
-                ),
-                "—",
-            ],
+            vec!["p50".to_string(), p50, "—".to_string()],
+            vec!["p95".to_string(), p95, "—".to_string()],
+            vec!["p99".to_string(), p99, delta],
+            vec!["p999".to_string(), p999, "—".to_string()],
+            vec!["Throughput".to_string(), throughput, "—".to_string()],
+            vec!["Error rate".to_string(), error_rate, "—".to_string()],
+            vec!["Check rate".to_string(), check_rate, "—".to_string()],
         ],
     )
 }
@@ -185,12 +181,21 @@ fn render_stage_table(stages: Option<&StageMetrics>) -> String {
     markdown_table(
         &["Stage", "p99 (ms)"],
         &[
-            vec!["Auth LRU", &format_number(stages.auth_lru_p99_ms)],
-            vec!["Auth gRPC", &format_number(stages.auth_grpc_p99_ms)],
-            vec!["Rate limit", &format_number(stages.rate_limit_p99_ms)],
-            vec!["Directive resolve", &format_number(stages.directive_resolve_p99_ms)],
-            vec!["Prompt inject", &format_number(stages.prompt_inject_p99_ms)],
-            vec!["Total overhead", &format_number(stages.total_overhead_p99_ms)],
+            vec!["Auth LRU".to_string(), format_number(stages.auth_lru_p99_ms)],
+            vec!["Auth gRPC".to_string(), format_number(stages.auth_grpc_p99_ms)],
+            vec!["Rate limit".to_string(), format_number(stages.rate_limit_p99_ms)],
+            vec![
+                "Directive resolve".to_string(),
+                format_number(stages.directive_resolve_p99_ms),
+            ],
+            vec![
+                "Prompt inject".to_string(),
+                format_number(stages.prompt_inject_p99_ms),
+            ],
+            vec![
+                "Total overhead".to_string(),
+                format_number(stages.total_overhead_p99_ms),
+            ],
         ],
     )
 }
@@ -205,31 +210,31 @@ fn render_go_table(run: &BenchmarkRun) -> String {
     let bytes = bench.and_then(|v| v.get("bytes_per_op")).and_then(|v| v.as_f64());
     let low = bench.and_then(|v| v.get("ci_95_low")).and_then(|v| v.as_f64());
     let high = bench.and_then(|v| v.get("ci_95_high")).and_then(|v| v.as_f64());
+
     markdown_table(
         &["Metric", "Value"],
         &[
-            vec!["ns/op", &format_number_precise(ns, 0)],
-            vec!["allocs/op", &format_number_precise(allocs, 1)],
-            vec!["bytes/op", &format_number_precise(bytes, 0)],
-            vec!["95% CI low", &format_number_precise(low, 0)],
-            vec!["95% CI high", &format_number_precise(high, 0)],
+            vec!["ns/op".to_string(), format_number_precise(ns, 0)],
+            vec!["allocs/op".to_string(), format_number_precise(allocs, 1)],
+            vec!["bytes/op".to_string(), format_number_precise(bytes, 0)],
+            vec!["95% CI low".to_string(), format_number_precise(low, 0)],
+            vec!["95% CI high".to_string(), format_number_precise(high, 0)],
         ],
     )
 }
 
 fn render_env_table(run: &BenchmarkRun) -> String {
+    let vcpus = run.runner_vcpus.map(|v| v.to_string());
+    let ram = run.runner_ram_gb.map(|v| v.to_string());
     markdown_table(
         &["Field", "Value"],
         &[
-            vec!["Go version", &escape_cell(run.go_version.as_deref())],
-            vec!["Runner OS", &escape_cell(run.runner_os.as_deref())],
-            vec!["Runner CPU", &escape_cell(run.runner_cpu.as_deref())],
-            vec!["vCPUs", &escape_cell(run.runner_vcpus.map(|v| v.to_string()).as_deref())],
-            vec![
-                "RAM (GB)",
-                &escape_cell(run.runner_ram_gb.map(|v| v.to_string()).as_deref()),
-            ],
-            vec!["k6 version", &escape_cell(run.k6_version.as_deref())],
+            vec!["Go version".to_string(), escape_cell(run.go_version.as_deref())],
+            vec!["Runner OS".to_string(), escape_cell(run.runner_os.as_deref())],
+            vec!["Runner CPU".to_string(), escape_cell(run.runner_cpu.as_deref())],
+            vec!["vCPUs".to_string(), escape_cell(vcpus.as_deref())],
+            vec!["RAM (GB)".to_string(), escape_cell(ram.as_deref())],
+            vec!["k6 version".to_string(), escape_cell(run.k6_version.as_deref())],
         ],
     )
 }
@@ -264,23 +269,28 @@ fn render_stage_mermaid(stages: Option<&StageMetrics>) -> String {
     )
 }
 
-fn markdown_table(headers: &[&str], rows: &[Vec<&str>]) -> String {
+fn markdown_table(headers: &[&str], rows: &[Vec<String>]) -> String {
+    let header_cells: Vec<String> = headers
+        .iter()
+        .map(|cell| escape_cell(Some(cell)))
+        .collect();
     let mut lines = vec![
-        format!("| {} |", headers.iter().map(|cell| escape_cell(Some(cell))).join(" | ")),
-        format!("| {} |", headers.iter().map(|_| "---").join(" | ")),
+        format!("| {} |", header_cells.join(" | ")),
+        format!(
+            "| {} |",
+            headers.iter().map(|_| "---").collect::<Vec<_>>().join(" | ")
+        ),
     ];
     for row in rows {
-        lines.push(format!(
-            "| {} |",
-            row.iter().map(|cell| escape_cell(Some(cell))).join(" | ")
-        ));
+        let cells: Vec<String> = row
+            .iter()
+            .map(|cell| escape_cell(Some(cell.as_str())))
+            .collect();
+        lines.push(format!("| {} |", cells.join(" | ")));
     }
     lines.join("\n")
 }
 
 fn format_number_precise(value: Option<f64>, digits: usize) -> String {
-    match value {
-        Some(number) if !number.is_nan() => format!("{number:.digits$}"),
-        _ => "—".to_string(),
-    }
+    sanitize::format_number_precise(value, digits)
 }
