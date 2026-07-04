@@ -173,7 +173,7 @@ impl GitHubClient {
             format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={git_ref}");
         let response = self
             .http
-            .get(url)
+            .get(&url)
             .header(AUTHORIZATION, format!("Bearer {}", self.token))
             .header(ACCEPT, "application/vnd.github+json")
             .header("X-GitHub-Api-Version", API_VERSION)
@@ -195,14 +195,58 @@ impl GitHubClient {
             .json()
             .await
             .map_err(|err| bot_err(format!("contents decode failed: {err}")))?;
-        let encoded = value
-            .get("content")
+
+        let encoding = value
+            .get("encoding")
             .and_then(|item| item.as_str())
-            .ok_or_else(|| bot_err("contents missing content".to_string()))?;
+            .unwrap_or("base64");
+        let content = value.get("content").and_then(|item| item.as_str());
+
+        if encoding == "none" || content.is_none_or(str::is_empty) {
+            return self.get_file_bytes_raw(owner, repo, path, git_ref).await;
+        }
+
+        let encoded = content.ok_or_else(|| bot_err("contents missing content".to_string()))?;
         let bytes = STANDARD
             .decode(encoded.replace('\n', ""))
             .map_err(|err| bot_err(format!("contents base64 decode failed: {err}")))?;
         Ok(Some(bytes))
+    }
+
+    async fn get_file_bytes_raw(
+        &self,
+        owner: &str,
+        repo: &str,
+        path: &str,
+        git_ref: &str,
+    ) -> Result<Option<Vec<u8>>> {
+        let url =
+            format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={git_ref}");
+        let response = self
+            .http
+            .get(url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .header(ACCEPT, "application/vnd.github.raw+json")
+            .header("X-GitHub-Api-Version", API_VERSION)
+            .header(USER_AGENT, "ibexharness-benchmark-bot")
+            .send()
+            .await
+            .map_err(|err| bot_err(format!("contents raw get failed: {err}")))?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            return Err(bot_err(format!(
+                "contents raw get failed: status {}",
+                response.status()
+            )));
+        }
+        response
+            .bytes()
+            .await
+            .map(|bytes| Some(bytes.to_vec()))
+            .map_err(|err| bot_err(format!("contents raw read failed: {err}")))
     }
 
     pub async fn find_labeled_pr_with_sha(

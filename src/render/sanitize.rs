@@ -87,6 +87,7 @@ fn escape_markdown_inline(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     for ch in value.chars() {
         match ch {
+            '\\' => out.push_str("\\\\"),
             '|' => out.push_str("\\|"),
             '\n' | '\r' => out.push(' '),
             '[' | ']' | '<' | '>' | '`' => {
@@ -103,6 +104,12 @@ fn escape_markdown_inline(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn escapes_backslash_before_pipe() {
+        let value = escape_cell(Some(r"\|not-a-separator"));
+        assert!(value.contains("\\\\"));
+    }
 
     #[test]
     fn strips_control_chars_from_cells() {
