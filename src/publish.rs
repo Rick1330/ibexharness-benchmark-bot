@@ -118,9 +118,7 @@ pub async fn publish_benchmark_data(
 
 fn extract_zip(bytes: &[u8]) -> Result<PathBuf> {
     let dir = tempfile::tempdir().map_err(|err| bot_err(format!("tempdir failed: {err}")))?;
-    let path = dir
-        .keep()
-        .map_err(|err| bot_err(format!("tempdir keep failed: {err}")))?;
+    let path = dir.keep();
     let mut archive =
         ZipArchive::new(Cursor::new(bytes)).map_err(|err| bot_err(format!("zip open failed: {err}")))?;
     archive
