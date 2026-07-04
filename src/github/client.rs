@@ -16,6 +16,14 @@ pub struct GitHubClient {
     token: String,
 }
 
+pub struct PutFileRequest<'a> {
+    pub path: &'a str,
+    pub branch: &'a str,
+    pub bytes: &'a [u8],
+    pub message: &'a str,
+    pub file_sha: Option<&'a str>,
+}
+
 impl GitHubClient {
     pub fn new(token: String) -> Self {
         Self {
@@ -176,25 +184,16 @@ impl GitHubClient {
         Ok(value.get("sha").and_then(|sha| sha.as_str()).map(str::to_owned))
     }
 
-    pub async fn put_file(
-        &self,
-        owner: &str,
-        repo: &str,
-        path: &str,
-        branch: &str,
-        bytes: &[u8],
-        message: &str,
-        file_sha: Option<&str>,
-    ) -> Result<()> {
+    pub async fn put_file(&self, owner: &str, repo: &str, req: PutFileRequest<'_>) -> Result<()> {
         let mut body = serde_json::json!({
-            "message": message,
-            "content": STANDARD.encode(bytes),
-            "branch": branch,
+            "message": req.message,
+            "content": STANDARD.encode(req.bytes),
+            "branch": req.branch,
         });
-        if let Some(sha) = file_sha {
+        if let Some(sha) = req.file_sha {
             body["sha"] = Value::String(sha.to_string());
         }
-        self.put_json(&format!("/repos/{owner}/{repo}/contents/{path}"), body)
+        self.put_json(&format!("/repos/{owner}/{repo}/contents/{}", req.path), body)
             .await?;
         Ok(())
     }

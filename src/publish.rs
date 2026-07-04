@@ -6,7 +6,7 @@ use serde_json::Value;
 use zip::ZipArchive;
 
 use crate::error::{bot_err, Result};
-use crate::github::{extract_artifact_paths, GitHubClient};
+use crate::github::{extract_artifact_paths, GitHubClient, PutFileRequest};
 use crate::model::BenchmarkData;
 use crate::render::render_data_pr_body;
 use crate::validate;
@@ -74,22 +74,26 @@ pub async fn publish_benchmark_data(
         .put_file(
             owner,
             repo,
-            JSON_PATH,
-            &branch,
-            &json_bytes,
-            &message,
-            json_sha.as_deref(),
+            PutFileRequest {
+                path: JSON_PATH,
+                branch: &branch,
+                bytes: &json_bytes,
+                message: &message,
+                file_sha: json_sha.as_deref(),
+            },
         )
         .await?;
     client
         .put_file(
             owner,
             repo,
-            BADGE_PATH,
-            &branch,
-            &badge_bytes,
-            &message,
-            badge_sha.as_deref(),
+            PutFileRequest {
+                path: BADGE_PATH,
+                branch: &branch,
+                bytes: &badge_bytes,
+                message: &message,
+                file_sha: badge_sha.as_deref(),
+            },
         )
         .await?;
 

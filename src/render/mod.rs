@@ -12,7 +12,7 @@ pub fn render_pr_comment(data: &BenchmarkData, gate: &GateResult) -> Result<Stri
         .and_then(|runs| runs.first())
         .ok_or_else(|| "benchmark data has no runs".to_string())?;
 
-    let short_sha = sanitize_sha(run.short_sha.as_deref().or_else(|| run.sha.as_deref()));
+    let short_sha = resolve_short_sha(run);
     let branch = sanitize_branch(run.branch.as_deref().unwrap_or("unknown"));
     let status = run.status.as_deref().unwrap_or("unknown");
     let emoji = status_emoji(status);
@@ -62,7 +62,7 @@ pub fn render_pr_comment(data: &BenchmarkData, gate: &GateResult) -> Result<Stri
 
 pub fn render_data_pr_body(data: &BenchmarkData, run_url: Option<&str>, run_number: Option<i64>) -> String {
     let run = data.runs.as_ref().and_then(|runs| runs.first());
-    let short_sha = sanitize_sha(run.and_then(|r| r.short_sha.as_deref()));
+    let short_sha = run.map(resolve_short_sha).unwrap_or_else(|| sanitize_sha(None));
     let status = run.and_then(|r| r.status.as_deref()).unwrap_or("unknown");
     let number = run_number
         .or(run.and_then(|r| r.run_number))
@@ -267,6 +267,10 @@ fn render_stage_mermaid(stages: Option<&StageMetrics>) -> String {
         names.join("\", \""),
         values.join(", ")
     )
+}
+
+fn resolve_short_sha(run: &BenchmarkRun) -> String {
+    sanitize_sha(run.short_sha.as_deref().or(run.sha.as_deref()))
 }
 
 fn markdown_table(headers: &[&str], rows: &[Vec<String>]) -> String {
