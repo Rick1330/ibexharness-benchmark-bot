@@ -132,7 +132,8 @@ impl GitHubClient {
                 "sha": sha,
             }),
         )
-        .await
+        .await?;
+        Ok(())
     }
 
     pub async fn main_sha(&self, owner: &str, repo: &str) -> Result<String> {
@@ -194,7 +195,8 @@ impl GitHubClient {
             body["sha"] = Value::String(sha.to_string());
         }
         self.put_json(&format!("/repos/{owner}/{repo}/contents/{path}"), body)
-            .await
+            .await?;
+        Ok(())
     }
 
     pub async fn open_pull_request(
