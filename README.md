@@ -1,20 +1,11 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/brand/ibex-mark-dark.png">
-    <img alt="IBEX Harness" src="docs/brand/ibex-mark-light.png" width="48" height="48">
+    <img alt="IBEX Harness Benchmark Bot" src="docs/brand/ibex-mark-light.png" width="96" height="96">
   </picture>
 </p>
 
-<pre align="center">
- _____ ____  ________   __  _    _                                
-|_   _|  _ \|  ____\ \ / / | |  | |                               
-  | | | |_) | |__   \ V /  | |__| | __ _ _ __ _ __   ___  ___ ___ 
-  | | |  _ <|  __|   > <   |  __  |/ _` | '__| '_ \ / _ \/ __/ __|
- _| |_| |_) | |____ / . \  | |  | | (_| | |  | | | |  __/\__ \__ \
-|_____|____/|______/_/ \_\ |_|  |_|\__,_|_|  |_| |_|\___||___/___/
-</pre>
-
-<p align="center"><strong>Benchmark Bot</strong></p>
+<h1 align="center">IBEX Harness Benchmark Bot</h1>
 
 <p align="center">
 GitHub App (Rust) · publishes benchmark data to <a href="https://github.com/Rick1330/ibex-harness">ibex-harness</a> · posts branded PR comments

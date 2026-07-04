@@ -16,9 +16,8 @@ fn render_pr_comment_includes_gate_and_stages() {
     )
     .unwrap();
     let body = render_pr_comment(&data, &gate).expect("render");
-    assert!(body.contains("IBEX Harness"));
-    assert!(body.contains("Benchmark Bot"));
-    assert!(body.contains("ibex-mark-light.png"));
+    assert!(body.contains("IBEX Harness Benchmark Bot"));
+    assert!(body.contains("width=\"48\""));
     assert!(body.contains("## Benchmark Results"));
     assert!(body.contains("Regression gate"));
     assert!(body.contains("k6 p99 SLA"));
