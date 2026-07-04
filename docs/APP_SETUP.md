@@ -3,7 +3,7 @@
 ## 1. Create the App
 
 1. **GitHub → Settings → Developer settings → GitHub Apps → New GitHub App**
-2. **Name:** `ibexharness-benchmark-bot`
+2. **Name:** `IBEX Harness Benchmark Bot` (slug: `ibexharness-benchmark-bot`)
 3. **Homepage URL:** `https://github.com/Rick1330/ibexharness-benchmark-bot`
 4. **Webhook:** inactive (not used)
 5. **Logo:** upload `docs/brand/android-chrome-512x512.png` (IBEX mark shown beside bot comments)

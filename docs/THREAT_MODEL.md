@@ -1,4 +1,4 @@
-# Threat model — ibexharness-benchmark-bot
+# IBEX Harness Benchmark Bot — threat model
 
 ## Assets
 
