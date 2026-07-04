@@ -16,7 +16,7 @@ fn locked_repo(repo: &str) -> Result<&str> {
 }
 
 #[derive(Parser)]
-#[command(name = "ibex-benchmark-bot", about = "IBEX Harness benchmark bot")]
+#[command(name = "ibex-benchmark-bot", about = "IBEX Harness Benchmark Bot")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,

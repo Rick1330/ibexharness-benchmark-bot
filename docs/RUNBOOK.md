@@ -1,4 +1,4 @@
-# Runbook — ibexharness-benchmark-bot
+# IBEX Harness Benchmark Bot — runbook
 
 ## Normal operation
 

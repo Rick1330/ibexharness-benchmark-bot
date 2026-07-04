@@ -12,13 +12,17 @@ const BRAND_MARK_LIGHT: &str =
 const BRAND_MARK_DARK: &str =
     "https://raw.githubusercontent.com/Rick1330/ibexharness-benchmark-bot/main/docs/brand/ibex-mark-dark.png";
 
+const BRAND_TITLE: &str = "IBEX Harness";
+const BRAND_SUBTITLE: &str = "Benchmark Bot";
+
 fn brand_header() -> String {
     format!(
         r#"<p align="left">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="{BRAND_MARK_DARK}">
-    <img alt="IBEX Harness" src="{BRAND_MARK_LIGHT}" width="28" height="28">
+    <img alt="{BRAND_TITLE}" src="{BRAND_MARK_LIGHT}" width="28" height="28" valign="middle">
   </picture>
+  <strong>{BRAND_TITLE}</strong> · {BRAND_SUBTITLE}
 </p>"#
     )
 }
