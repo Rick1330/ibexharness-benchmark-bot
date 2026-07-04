@@ -1,0 +1,30 @@
+[package]
+name = "ibex-benchmark-bot"
+version = "0.1.0"
+edition = "2021"
+description = "GitHub App automation for IBEX Harness benchmark publishing and PR comments"
+license = "Apache-2.0"
+
+[[bin]]
+name = "ibex-benchmark-bot"
+path = "src/main.rs"
+
+[lib]
+name = "ibex_benchmark_bot"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+clap = { version = "4.5", features = ["derive"] }
+jsonwebtoken = "9"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+zip = "2"
+tempfile = "3"
+
+[dev-dependencies]

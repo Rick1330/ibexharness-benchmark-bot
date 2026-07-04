@@ -58,6 +58,7 @@ In **ibex-harness** → **Settings → Secrets and variables → Actions → Var
 | Variable | Value |
 | --- | --- |
 | `BENCHMARK_BOT_ENABLED` | `true` |
+| `BENCHMARK_BOT_SHA` | Pinned commit SHA of this repo (supply-chain pin for PR comments) |
 
 ## 6. Verify
 

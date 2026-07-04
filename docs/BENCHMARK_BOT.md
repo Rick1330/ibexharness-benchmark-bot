@@ -80,7 +80,7 @@ Bot workflow re-verifies via Actions API before publishing.
 ## Publish flow
 
 1. Download `benchmark-data` artifact from the verified harness run.
-2. Run schema validation (`scripts/vendor/validate_published_data.py`).
+2. Run validation (`cargo test` / `validate` module in Rust).
 3. Create branch `chore/bench-data-{run_number}` from latest `main`.
 4. Commit files under `docs/app/public/benchmarks/`.
 5. Open PR with rich body from `packages/comment-renderer` (`mode=data-pr`).
@@ -89,13 +89,14 @@ Bot workflow re-verifies via Actions API before publishing.
 
 ## Shared comment renderer
 
-Harness checks out this repo at a **pinned commit SHA** and runs:
+Harness checks out this repo at a **pinned commit SHA** (`BENCHMARK_BOT_SHA`) and runs:
 
 ```bash
-node packages/comment-renderer/cli.mjs pr-comment
+cargo build --release
+./target/release/ibex-benchmark-bot post-pr-comment \
+  --benchmark-data benchmarks/output/benchmark-data.json \
+  --gate-result benchmarks/output/gate-result.json
 ```
-
-See `packages/comment-renderer/README.md`.
 
 ## Migration from interim workflow
 

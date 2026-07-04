@@ -18,22 +18,17 @@ jobs:
       - name: Validate action pins
         run: bash .github/scripts/validate-action-pins.sh
 
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a226fd948759f221de0c # v5.6.0
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
+
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2.8.2
         with:
-          python-version: "3.12"
+          workspaces: .
 
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
+      - name: Format
+        run: cargo fmt --all -- --check
 
-      - name: Python unit tests
-        run: python -m unittest discover -s scripts/tests -p 'test_*.py'
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
 
-      - name: Validate vendored benchmark data script
-        run: |
-          python scripts/vendor/validate_published_data.py \
-            packages/comment-renderer/tests/fixtures/benchmark-data.json
-
-      - name: Comment renderer tests
-        working-directory: packages/comment-renderer
-        run: npm test
+      - name: Test
+        run: cargo test --all

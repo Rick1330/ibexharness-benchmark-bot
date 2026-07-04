@@ -1,54 +1,49 @@
-# ibexharness-benchmark-bot
+# IBEX Harness Benchmark Bot
 
-External GitHub App and automation for publishing IBEX Harness benchmark data to `main` after merge, plus a shared PR comment renderer consumed by [ibex-harness](https://github.com/Rick1330/ibex-harness).
+External **Rust** GitHub App that publishes validated benchmark data to [ibex-harness](https://github.com/Rick1330/ibex-harness) `main` via pull request, and renders rich PR benchmark comments.
 
-**Harness repo:** [Rick1330/ibex-harness](https://github.com/Rick1330/ibex-harness)
+**Harness:** [Rick1330/ibex-harness](https://github.com/Rick1330/ibex-harness)  
+**ADR:** [ADR-0024](https://github.com/Rick1330/ibex-harness/blob/main/docs/app/content/docs/adr/0024-benchmark-data-publishing-model.mdx)
 
-**Related ADR:** [ADR-0024 — Benchmark data publishing model](https://github.com/Rick1330/ibex-harness/blob/main/docs/app/content/docs/adr/0024-benchmark-data-publishing-model.mdx)
+## Architecture
 
-## Status
+Single Rust binary (`ibex-benchmark-bot`) with subcommands:
 
-Implementation complete. Configure the GitHub App per [`docs/APP_SETUP.md`](docs/APP_SETUP.md) before the publish workflow can run.
+| Command | Purpose |
+| --- | --- |
+| `verify-dispatch` | Re-verify `repository_dispatch` payload via Actions API |
+| `publish` | Download artifact, validate, open data PR on harness |
+| `render-pr-comment` | JSON → rich markdown (stdout) |
+| `post-pr-comment` | Render + post PR comment (used by harness CI) |
 
-## Repository layout
+Deployment: **GitHub Actions only** ($0). No JavaScript, no Python runtime in the bot repo.
 
-```text
-ibexharness-benchmark-bot/
-  README.md
-  docs/
-    APP_SETUP.md
-    BENCHMARK_BOT.md
-    RUNBOOK.md
-    THREAT_MODEL.md
-    superpowers/specs/
-  packages/
-    comment-renderer/     # shared JSON → Markdown (PR + data PR)
-  scripts/
-    github_app.py
-    verify_dispatch.py
-    publish_benchmark_data.py
-    vendor/               # pinned validate_published_data.py
-  .github/workflows/
-    ci.yml
-    publish-benchmark-data.yml
-```
+## Setup
 
-## Quick start
-
-1. Follow [`docs/APP_SETUP.md`](docs/APP_SETUP.md) to create the GitHub App and store secrets.
-2. Add `BENCHMARK_BOT_DISPATCH_TOKEN` to ibex-harness repo secrets.
-3. Set harness variable `BENCHMARK_BOT_ENABLED=true`.
-4. Main benchmark run → `repository_dispatch` → bot opens data PR on ibex-harness.
+1. Follow [`docs/APP_SETUP.md`](docs/APP_SETUP.md) — create GitHub App, store secrets.
+2. Set harness `BENCHMARK_BOT_ENABLED=true` and `BENCHMARK_BOT_DISPATCH_TOKEN`.
+3. Pin harness variable `BENCHMARK_BOT_SHA` to a release commit of this repo.
 
 ## Development
 
 ```bash
-# Comment renderer tests
-cd packages/comment-renderer && npm test
+cargo fmt --all
+cargo clippy --all-targets -- -D warnings
+cargo test --all
+cargo build --release
+```
 
-# Python unit tests
-python -m unittest discover -s scripts/tests -p 'test_*.py'
+## Repository layout
 
-# Action pin validation
-bash .github/scripts/validate-action-pins.sh
+```text
+src/
+  github/     # App JWT, GitHub API client
+  render/     # PR + data-PR markdown
+  validate/   # benchmark-data.json validation
+  verify/     # dispatch verification
+  publish/    # artifact download + PR creation
+docs/
+  APP_SETUP.md
+  THREAT_MODEL.md
+  RUNBOOK.md
 ```

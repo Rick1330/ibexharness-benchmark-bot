@@ -37,61 +37,54 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a226fd948759f221de0c # v5.6.0
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
+
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2.8.2
         with:
-          python-version: "3.12"
+          workspaces: .
 
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
+      - name: Build bot
+        run: cargo build --release
 
-      - name: Resolve dispatch payload
-        id: payload
+      - name: Verify dispatch (repository_dispatch)
+        if: github.event_name == 'repository_dispatch'
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          CLIENT_PAYLOAD: ${{ toJson(github.event.client_payload) }}
-          INPUT_RUN_ID: ${{ github.event.inputs.run_id }}
-          INPUT_HEAD_SHA: ${{ github.event.inputs.head_sha }}
-          INPUT_RUN_NUMBER: ${{ github.event.inputs.run_number }}
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
         run: |
-          python <<'PY'
-          import json, os, sys
-          if os.environ.get("EVENT_NAME") == "workflow_dispatch":
-              payload = {
-                  "run_id": os.environ["INPUT_RUN_ID"],
-                  "head_sha": os.environ["INPUT_HEAD_SHA"],
-                  "run_number": os.environ["INPUT_RUN_NUMBER"],
-              }
-          else:
-              payload = json.loads(os.environ.get("CLIENT_PAYLOAD") or "{}")
-          for key in ("run_id", "head_sha", "run_number"):
-              if key not in payload or payload[key] in (None, ""):
-                  print(f"missing payload field: {key}", file=sys.stderr)
-                  sys.exit(1)
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
-              out.write(f"json={json.dumps(payload)}\n")
-          PY
+          ./target/release/ibex-benchmark-bot verify-dispatch \
+            --payload '${{ toJson(github.event.client_payload) }}'
 
-      - name: Verify dispatch payload
+      - name: Verify dispatch (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
         env:
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
           INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
-          HARNESS_REPO: Rick1330/ibex-harness
-          RUN_ID: ${{ fromJson(steps.payload.outputs.json).run_id }}
-          HEAD_SHA: ${{ fromJson(steps.payload.outputs.json).head_sha }}
-          RUN_NUMBER: ${{ fromJson(steps.payload.outputs.json).run_number }}
-        run: python scripts/verify_dispatch.py
+        run: |
+          ./target/release/ibex-benchmark-bot verify-dispatch \
+            --payload '{"run_id":${{ github.event.inputs.run_id }},"head_sha":"${{ github.event.inputs.head_sha }}","run_number":${{ github.event.inputs.run_number }}}'
 
-      - name: Publish benchmark data PR
-        if: github.event_name != 'workflow_dispatch' || github.event.inputs.dry_run != 'true'
+      - name: Publish benchmark data PR (repository_dispatch)
+        if: github.event_name == 'repository_dispatch'
         env:
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
           INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
-          HARNESS_REPO: Rick1330/ibex-harness
-          PUBLISH_PAYLOAD: ${{ steps.payload.outputs.json }}
-        run: python scripts/publish_benchmark_data.py --payload "$PUBLISH_PAYLOAD"
+        run: |
+          ./target/release/ibex-benchmark-bot publish \
+            --payload '${{ toJson(github.event.client_payload) }}'
+
+      - name: Publish benchmark data PR (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run != 'true'
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+        run: |
+          ./target/release/ibex-benchmark-bot publish \
+            --payload '{"run_id":${{ github.event.inputs.run_id }},"head_sha":"${{ github.event.inputs.head_sha }}","run_number":${{ github.event.inputs.run_number }}}'
 
       - name: Dry run validation only
         if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
@@ -99,18 +92,15 @@ jobs:
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
           INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
-          HARNESS_REPO: Rick1330/ibex-harness
-          PUBLISH_PAYLOAD: ${{ steps.payload.outputs.json }}
-        run: python scripts/publish_benchmark_data.py --payload "$PUBLISH_PAYLOAD" --dry-run
+        run: |
+          ./target/release/ibex-benchmark-bot publish \
+            --payload '{"run_id":${{ github.event.inputs.run_id }},"head_sha":"${{ github.event.inputs.head_sha }}","run_number":${{ github.event.inputs.run_number }}}' \
+            --dry-run
 
       - name: Workflow summary
         if: always()
-        env:
-          RUN_ID: ${{ fromJson(steps.payload.outputs.json).run_id }}
-          HEAD_SHA: ${{ fromJson(steps.payload.outputs.json).head_sha }}
         run: |
           {
             echo "## Benchmark publish"
-            echo "- run_id: ${RUN_ID}"
-            echo "- head_sha: ${HEAD_SHA}"
+            echo "- event: ${{ github.event_name }}"
           } >> "$GITHUB_STEP_SUMMARY"
