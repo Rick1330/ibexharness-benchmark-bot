@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+use crate::config::resolve_harness_repo;
 use crate::error::{bot_err, Result};
 use crate::github::{installation_token, GitHubClient};
 use crate::model::{BenchmarkData, GateResult};

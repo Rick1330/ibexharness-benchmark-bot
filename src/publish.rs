@@ -1,6 +1,5 @@
 use std::fs;
 
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde_json::Value;
 
 use crate::artifact::{extract_artifact_zip, validate_badge_svg};
