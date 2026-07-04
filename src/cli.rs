@@ -140,8 +140,9 @@ fn env_nonempty(key: &str) -> bool {
 }
 
 async fn comment_client(fallback_token: &str) -> Result<GitHubClient> {
-    let has_app =
-        env_nonempty("APP_ID") && env_nonempty("APP_PRIVATE_KEY") && env_nonempty("INSTALLATION_ID");
+    let has_app = env_nonempty("APP_ID")
+        && env_nonempty("APP_PRIVATE_KEY")
+        && env_nonempty("INSTALLATION_ID");
     if has_app {
         return app_client().await;
     }
