@@ -107,6 +107,36 @@ pub fn format_throughput_delta(latency_regression_pct: Option<f64>) -> String {
     }
 }
 
+/// Format sub-millisecond stage values without rounding to misleading 0.00 ms.
+pub fn format_latency_ms(value: Option<f64>) -> String {
+    match value {
+        None | Some(v) if v.is_nan() => "—".to_string(),
+        Some(0.0) => "0 ms".to_string(),
+        Some(value) => {
+            let abs = value.abs();
+            if abs < 0.01 {
+                let micros = value * 1000.0;
+                if micros.abs() < 0.1 {
+                    format!("{} ns", (value * 1_000_000.0).round())
+                } else {
+                    format!("{micros:.2} µs")
+                }
+            } else {
+                format!("{value:.2} ms")
+            }
+        }
+    }
+}
+
+pub fn format_ns_per_op(value: Option<f64>) -> String {
+    match value {
+        None | Some(v) if v.is_nan() || v <= 0.0 => "—".to_string(),
+        Some(value) if value >= 1_000_000.0 => format!("{:.2} ms/op", value / 1_000_000.0),
+        Some(value) if value >= 1000.0 => format!("{:.2} µs/op", value / 1000.0),
+        Some(value) => format!("{value:.1} ns/op"),
+    }
+}
+
 pub fn format_throughput(req_per_s: Option<f64>) -> String {
     match req_per_s {
         Some(number) if !number.is_nan() => {
@@ -211,5 +241,18 @@ mod tests {
     fn rejects_phishing_gate_name() {
         let value = sanitize_gate_name(Some("[click](https://evil.example)"));
         assert_eq!(value, "invalid");
+    }
+
+    #[test]
+    fn format_latency_ms_shows_nanoseconds_for_tiny_values() {
+        assert_eq!(format_latency_ms(Some(0.00005)), "50 ns");
+        assert_eq!(format_latency_ms(Some(0.00042)), "0.42 µs");
+        assert_eq!(format_latency_ms(Some(8.5)), "8.50 ms");
+    }
+
+    #[test]
+    fn format_ns_per_op_scales_units() {
+        assert_eq!(format_ns_per_op(Some(376.4)), "376.4 ns/op");
+        assert_eq!(format_ns_per_op(Some(8_500_000.0)), "8.50 ms/op");
     }
 }

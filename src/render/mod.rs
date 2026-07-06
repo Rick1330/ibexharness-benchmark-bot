@@ -2,9 +2,9 @@ mod sanitize;
 
 use crate::model::{BenchmarkData, BenchmarkRun, GateCheck, GateResult, StageMetrics};
 pub use sanitize::{
-    escape_cell, format_delta, format_latency_delta, format_number, format_throughput,
-    format_throughput_delta, sanitize_branch, sanitize_gate_name, sanitize_sha, status_emoji,
-    COMMENT_MARKER,
+    escape_cell, format_delta, format_latency_delta, format_latency_ms, format_ns_per_op,
+    format_number, format_throughput, format_throughput_delta, sanitize_branch, sanitize_gate_name,
+    sanitize_sha, status_emoji, COMMENT_MARKER,
 };
 
 const DOCS_BASE: &str = "https://docs.ibexharness.com/benchmarks/history";
@@ -18,7 +18,6 @@ const BRAND_NAME: &str = "IBEX Benchmark Bot";
 const BRAND_LOGO_PX: u32 = 32;
 const P99_SLA_MS: f64 = 20.0;
 const THROUGHPUT_BAR_SCALE: f64 = 10_000.0;
-const STAGE_MIN_MS: f64 = 0.001;
 const VISUAL_BAR_WIDTH: usize = 10;
 
 pub fn render_pr_comment(data: &BenchmarkData, gate: &GateResult) -> Result<String, String> {
@@ -48,6 +47,8 @@ pub fn render_pr_comment(data: &BenchmarkData, gate: &GateResult) -> Result<Stri
         String::new(),
         render_performance_summary(run, baseline_sha),
         String::new(),
+        render_data_quality_note(),
+        String::new(),
         render_verdict_note(status, run.regression_vs_baseline_pct),
         String::new(),
         render_details_block(run, gate, baseline_sha),
@@ -75,9 +76,13 @@ pub fn render_data_pr_body(
         .map(|value| value.to_string())
         .unwrap_or_else(|| "?".to_string());
     let p99 = format!(
-        "{} ms",
-        format_number(run.and_then(|r| r.k6.as_ref()).and_then(|k| k.p99_ms),)
+        "`{}`",
+        format_latency_ms(run.and_then(|r| r.k6.as_ref()).and_then(|k| k.p99_ms))
     );
+    let proxy_overhead = run
+        .and_then(proxy_overhead_ns)
+        .map(|ns| format!("`{}`", format_ns_per_op(Some(ns))))
+        .unwrap_or_else(|| "—".to_string());
 
     let mut lines = vec![
         render_compact_brand(),
@@ -95,10 +100,17 @@ pub fn render_data_pr_body(
             &[
                 vec!["Run number".to_string(), number],
                 vec!["Head SHA".to_string(), short_sha],
-                vec!["Proxy p99".to_string(), p99],
+                vec!["Proxy p99 (k6)".to_string(), p99],
+                vec!["Proxy overhead (Go)".to_string(), proxy_overhead],
             ],
         ),
     ];
+    lines.push(String::new());
+    lines.push(
+        "_k6 p99 is the authoritative SLA metric. Stage breakdown and ns/op values are \
+         synthetic Go microbenchmarks._"
+            .to_string(),
+    );
     if let Some(url) = run_url {
         lines.push(String::new());
         lines.push(format!("- [Harness benchmark workflow run]({url})"));
@@ -169,8 +181,11 @@ fn render_verdict_banner(status: &str, gate: &GateResult, run: &BenchmarkRun) ->
 
 fn render_performance_summary(run: &BenchmarkRun, baseline_sha: Option<&str>) -> String {
     let k6 = run.k6.as_ref();
-    let p99 = format!("`{} ms`", format_number(k6.and_then(|k| k.p99_ms)));
+    let p99 = format!("`{}`", format_latency_ms(k6.and_then(|k| k.p99_ms)));
     let throughput = format!("`{}`", format_throughput(k6.and_then(|k| k.req_per_s)));
+    let proxy_overhead = proxy_overhead_ns(run)
+        .map(|ns| format!("`{}`", format_ns_per_op(Some(ns))))
+        .unwrap_or_else(|| "—".to_string());
     let error_rate = format!(
         "`{}%`",
         sanitize::format_number_precise(k6.and_then(|k| k.error_rate).map(|v| v * 100.0), 2)
@@ -209,6 +224,12 @@ fn render_performance_summary(run: &BenchmarkRun, baseline_sha: Option<&str>) ->
                 ),
             ],
             vec![
+                "**Proxy overhead (Go)**".to_string(),
+                proxy_overhead,
+                "synthetic".to_string(),
+                "microbench".to_string(),
+            ],
+            vec![
                 "**Error rate**".to_string(),
                 error_rate,
                 error_delta,
@@ -227,6 +248,13 @@ fn baseline_link(baseline_sha: Option<&str>, delta: &str) -> String {
         return delta.to_string();
     }
     format!("[{delta}]({HARNESS_REPO}/commit/{safe})")
+}
+
+fn render_data_quality_note() -> String {
+    "> **Data model:** k6 load-test p99 is the authoritative SLA metric. Stage breakdown values are \
+     synthetic — derived from Go microbenchmarks (ns/op), not live proxy traces. Sub-0.01 ms stages \
+     are shown in µs/ns to avoid misleading zeros."
+        .to_string()
 }
 
 fn render_verdict_note(status: &str, regression_pct: Option<f64>) -> String {
@@ -421,17 +449,19 @@ fn gate_check_row(check: &GateCheck) -> Vec<String> {
 
 fn render_stage_details(stages: Option<&StageMetrics>) -> Option<String> {
     let stages = stages?;
-    let rows = non_zero_stage_rows(stages);
+    let rows = stage_p99_rows(stages);
     if rows.is_empty() {
         return None;
     }
-    let table = markdown_table(&["Stage", "p99 (ms)"], &rows);
+    let table = markdown_table(&["Stage", "p99"], &rows);
     Some(format!(
-        "<details>\n<summary>Stage breakdown (p99)</summary>\n\n{table}\n</details>"
+        "### Stage breakdown (synthetic)\n\n\
+         _Derived from Go microbenchmarks; use k6 p99 for end-to-end SLA._\n\n\
+         <details>\n<summary>Stage p99 values</summary>\n\n{table}\n</details>"
     ))
 }
 
-fn non_zero_stage_rows(stages: &StageMetrics) -> Vec<Vec<String>> {
+fn stage_p99_rows(stages: &StageMetrics) -> Vec<Vec<String>> {
     let entries = [
         ("Auth LRU", stages.auth_lru_p99_ms),
         ("Auth gRPC", stages.auth_grpc_p99_ms),
@@ -443,11 +473,18 @@ fn non_zero_stage_rows(stages: &StageMetrics) -> Vec<Vec<String>> {
     entries
         .into_iter()
         .filter_map(|(name, value)| {
-            value
-                .filter(|ms| *ms >= STAGE_MIN_MS)
-                .map(|ms| vec![name.to_string(), format_number(Some(ms))])
+            value.map(|ms| vec![name.to_string(), format_latency_ms(Some(ms))])
         })
         .collect()
+}
+
+fn proxy_overhead_ns(run: &BenchmarkRun) -> Option<f64> {
+    run.go_benchmarks
+        .as_ref()
+        .and_then(|value| value.get("BenchmarkProxyOverhead"))
+        .and_then(|v| v.get("ns_per_op"))
+        .and_then(|v| v.as_f64())
+        .filter(|ns| *ns > 0.0)
 }
 
 fn render_microbench_details(run: &BenchmarkRun) -> String {
@@ -458,9 +495,7 @@ fn render_microbench_details(run: &BenchmarkRun) -> String {
     if bench.is_none() {
         return String::new();
     }
-    let ns = bench
-        .and_then(|v| v.get("ns_per_op"))
-        .and_then(|v| v.as_f64());
+    let ns = proxy_overhead_ns(run);
     let allocs = bench
         .and_then(|v| v.get("allocs_per_op"))
         .and_then(|v| v.as_f64());
@@ -487,7 +522,7 @@ fn render_microbench_details(run: &BenchmarkRun) -> String {
         markdown_table(
             &["Metric", "Value", "95% CI"],
             &[
-                vec!["ns/op".to_string(), format_number_precise(ns, 0), ci],
+                vec!["ns/op".to_string(), format_ns_per_op(ns), ci],
                 vec![
                     "allocs/op".to_string(),
                     format_number_precise(allocs, 1),
