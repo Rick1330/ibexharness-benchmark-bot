@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::config::{EXPECTED_WORKFLOW_NAME, EXPECTED_WORKFLOW_PATH};
 use crate::error::{bot_err, Result};
-use crate::github::GitHubClient;
+use crate::github::{GitHubClient, RepoRef};
 use crate::model::{DispatchPayload, WorkflowRun};
 
 const EXPECTED_BRANCH: &str = "main";
@@ -82,7 +82,8 @@ pub async fn verify_dispatch(
 ) -> Result<WorkflowRun> {
     let head_sha = require_sha(&payload.head_sha)?;
     let (owner, repo) = crate::github::split_repo(repo_full)?;
-    let run = client.get_workflow_run(owner, repo, payload.run_id).await?;
+    let repo_ref = RepoRef::new(owner, repo);
+    let run = client.get_workflow_run(repo_ref, payload.run_id).await?;
 
     verify_workflow_run(&run)?;
 

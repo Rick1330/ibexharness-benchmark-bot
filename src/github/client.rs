@@ -1,17 +1,63 @@
 use base64::{engine::general_purpose::STANDARD, Engine as _};
-use reqwest::header::{ACCEPT, AUTHORIZATION, USER_AGENT};
 use reqwest::StatusCode;
-use serde::de::DeserializeOwned;
 use serde_json::Value;
 
 use crate::error::{bot_err, Result};
 use crate::model::WorkflowRun;
 
-const API_VERSION: &str = "2022-11-28";
+use super::http::{github_raw_accept, HttpClient};
 
 pub struct GitHubClient {
-    http: reqwest::Client,
-    token: String,
+    http: HttpClient,
+}
+
+pub struct RepoRef<'a> {
+    pub owner: &'a str,
+    pub repo: &'a str,
+}
+
+pub struct RepoPathRef<'a> {
+    pub repo: RepoRef<'a>,
+    pub path: &'a str,
+    pub git_ref: &'a str,
+}
+
+pub struct CreateBranch<'a> {
+    pub repo: RepoRef<'a>,
+    pub branch: &'a str,
+    pub sha: &'a str,
+}
+
+pub struct OpenPullRequest<'a> {
+    pub repo: RepoRef<'a>,
+    pub branch: &'a str,
+    pub title: &'a str,
+    pub body: &'a str,
+}
+
+pub struct IssueRef<'a> {
+    pub repo: RepoRef<'a>,
+    pub number: i64,
+}
+
+pub struct IssueCommentUpdate<'a> {
+    pub repo: RepoRef<'a>,
+    pub comment_id: i64,
+    pub body: &'a str,
+}
+
+pub struct CommitStatus<'a> {
+    pub repo: RepoRef<'a>,
+    pub sha: &'a str,
+    pub state: &'a str,
+    pub description: &'a str,
+    pub context: &'a str,
+}
+
+pub struct LabeledPrSearch<'a> {
+    pub repo: RepoRef<'a>,
+    pub label: &'a str,
+    pub head_sha: &'a str,
 }
 
 pub struct PutFileRequest<'a> {
@@ -22,121 +68,59 @@ pub struct PutFileRequest<'a> {
     pub file_sha: Option<&'a str>,
 }
 
+impl<'a> RepoRef<'a> {
+    pub fn new(owner: &'a str, repo: &'a str) -> Self {
+        Self { owner, repo }
+    }
+
+    fn base_path(&self) -> String {
+        format!("/repos/{}/{}", self.owner, self.repo)
+    }
+}
+
 impl GitHubClient {
     pub fn new(token: String) -> Self {
         Self {
-            http: reqwest::Client::new(),
-            token,
+            http: HttpClient::new(token),
         }
     }
 
-    pub async fn get_json<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
-        let url = format!("https://api.github.com{path}");
+    pub async fn get_workflow_run(&self, repo: RepoRef<'_>, run_id: i64) -> Result<WorkflowRun> {
+        self.http
+            .get_json(&format!("{}/actions/runs/{run_id}", repo.base_path()))
+            .await
+    }
+
+    pub async fn ref_exists(&self, repo: RepoRef<'_>, branch: &str) -> Result<bool> {
+        let path = format!("{}/git/ref/heads/{branch}", repo.base_path());
         let response = self
             .http
-            .get(url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.token))
-            .header(ACCEPT, "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", API_VERSION)
-            .header(USER_AGENT, "ibexharness-benchmark-bot")
-            .send()
-            .await
-            .map_err(|err| bot_err(format!("GET {path} failed: {err}")))?;
-
-        if !response.status().is_success() {
-            return Err(bot_err(format!(
-                "GET {path} failed: status {}",
-                response.status()
-            )));
-        }
-
-        response
-            .json::<T>()
-            .await
-            .map_err(|err| bot_err(format!("GET {path} decode failed: {err}")))
-    }
-
-    pub async fn get_workflow_run(
-        &self,
-        owner: &str,
-        repo: &str,
-        run_id: i64,
-    ) -> Result<WorkflowRun> {
-        self.get_json(&format!("/repos/{owner}/{repo}/actions/runs/{run_id}"))
-            .await
-    }
-
-    pub async fn ref_exists(&self, owner: &str, repo: &str, branch: &str) -> Result<bool> {
-        let path = format!("/repos/{owner}/{repo}/git/ref/heads/{branch}");
-        let url = format!("https://api.github.com{path}");
-        let response = self
-            .http
-            .get(url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.token))
-            .header(ACCEPT, "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", API_VERSION)
-            .header(USER_AGENT, "ibexharness-benchmark-bot")
-            .send()
-            .await
-            .map_err(|err| bot_err(format!("ref check failed: {err}")))?;
-
-        if response.status() == StatusCode::NOT_FOUND {
-            return Ok(false);
-        }
-        if !response.status().is_success() {
-            return Err(bot_err(format!(
+            .get_raw(&path, "application/vnd.github+json")
+            .await?;
+        match response.status() {
+            StatusCode::NOT_FOUND => Ok(false),
+            status if status.is_success() => Ok(true),
+            _ => Err(bot_err(format!(
                 "ref check failed: {}",
                 response.text().await.unwrap_or_default()
-            )));
+            ))),
         }
-        Ok(true)
     }
 
-    pub async fn download_artifact_zip(
-        &self,
-        owner: &str,
-        repo: &str,
-        run_id: i64,
-    ) -> Result<Vec<u8>> {
+    pub async fn download_artifact_zip(&self, repo: RepoRef<'_>, run_id: i64) -> Result<Vec<u8>> {
         let artifacts: Value = self
-            .get_json(&format!(
-                "/repos/{owner}/{repo}/actions/runs/{run_id}/artifacts"
-            ))
+            .http
+            .get_json(&format!("{}/actions/runs/{run_id}/artifacts", repo.base_path()))
             .await?;
-        let items = artifacts
-            .get("artifacts")
-            .and_then(|value| value.as_array())
-            .ok_or_else(|| bot_err("artifacts list missing".to_string()))?;
-        let artifact = items
-            .iter()
-            .find(|item| item.get("name").and_then(|v| v.as_str()) == Some("benchmark-data"))
-            .ok_or_else(|| bot_err("benchmark-data artifact not found".to_string()))?;
-        let artifact_id = artifact
-            .get("id")
-            .and_then(|value| value.as_i64())
-            .ok_or_else(|| bot_err("artifact id missing".to_string()))?;
-
-        let url = format!(
-            "https://api.github.com/repos/{owner}/{repo}/actions/artifacts/{artifact_id}/zip"
+        let artifact_id = find_benchmark_artifact_id(&artifacts)?;
+        let path = format!(
+            "{}/actions/artifacts/{artifact_id}/zip",
+            repo.base_path()
         );
         let response = self
             .http
-            .get(url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.token))
-            .header(ACCEPT, "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", API_VERSION)
-            .header(USER_AGENT, "ibexharness-benchmark-bot")
-            .send()
-            .await
-            .map_err(|err| bot_err(format!("artifact download failed: {err}")))?;
-
-        if !response.status().is_success() {
-            return Err(bot_err(format!(
-                "artifact download failed: {}",
-                response.text().await.unwrap_or_default()
-            )));
-        }
-
+            .get_with_accept(&path, "application/vnd.github+json")
+            .await?;
         response
             .bytes()
             .await
@@ -144,44 +128,23 @@ impl GitHubClient {
             .map_err(|err| bot_err(format!("artifact read failed: {err}")))
     }
 
-    pub async fn create_branch(
-        &self,
-        owner: &str,
-        repo: &str,
-        branch: &str,
-        sha: &str,
-    ) -> Result<()> {
-        self.post_json(
-            &format!("/repos/{owner}/{repo}/git/refs"),
-            serde_json::json!({
-                "ref": format!("refs/heads/{branch}"),
-                "sha": sha,
-            }),
-        )
-        .await?;
+    pub async fn create_branch(&self, req: CreateBranch<'_>) -> Result<()> {
+        let path = format!("{}/git/refs", req.repo.base_path());
+        self.http
+            .post_json(
+                &path,
+                serde_json::json!({
+                    "ref": format!("refs/heads/{}", req.branch),
+                    "sha": req.sha,
+                }),
+            )
+            .await?;
         Ok(())
     }
 
-    pub async fn get_file_bytes(
-        &self,
-        owner: &str,
-        repo: &str,
-        path: &str,
-        git_ref: &str,
-    ) -> Result<Option<Vec<u8>>> {
-        let url =
-            format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={git_ref}");
-        let response = self
-            .http
-            .get(&url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.token))
-            .header(ACCEPT, "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", API_VERSION)
-            .header(USER_AGENT, "ibexharness-benchmark-bot")
-            .send()
-            .await
-            .map_err(|err| bot_err(format!("contents get failed: {err}")))?;
-
+    pub async fn get_file_bytes(&self, req: RepoPathRef<'_>) -> Result<Option<Vec<u8>>> {
+        let path = contents_path(&req.repo, req.path, req.git_ref);
+        let response = self.http.get_raw(&path, "application/vnd.github+json").await?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
@@ -195,82 +158,32 @@ impl GitHubClient {
             .json()
             .await
             .map_err(|err| bot_err(format!("contents decode failed: {err}")))?;
-
-        let encoding = value
-            .get("encoding")
-            .and_then(|item| item.as_str())
-            .unwrap_or("base64");
-        let content = value.get("content").and_then(|item| item.as_str());
-
-        if encoding == "none" || content.is_none_or(str::is_empty) {
-            return self.get_file_bytes_raw(owner, repo, path, git_ref).await;
-        }
-
-        let encoded = content.ok_or_else(|| bot_err("contents missing content".to_string()))?;
-        let bytes = STANDARD
-            .decode(encoded.replace('\n', ""))
-            .map_err(|err| bot_err(format!("contents base64 decode failed: {err}")))?;
-        Ok(Some(bytes))
-    }
-
-    async fn get_file_bytes_raw(
-        &self,
-        owner: &str,
-        repo: &str,
-        path: &str,
-        git_ref: &str,
-    ) -> Result<Option<Vec<u8>>> {
-        let url =
-            format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={git_ref}");
-        let response = self
-            .http
-            .get(url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.token))
-            .header(ACCEPT, "application/vnd.github.raw+json")
-            .header("X-GitHub-Api-Version", API_VERSION)
-            .header(USER_AGENT, "ibexharness-benchmark-bot")
-            .send()
-            .await
-            .map_err(|err| bot_err(format!("contents raw get failed: {err}")))?;
-
-        if response.status() == StatusCode::NOT_FOUND {
-            return Ok(None);
-        }
-        if !response.status().is_success() {
-            return Err(bot_err(format!(
-                "contents raw get failed: status {}",
-                response.status()
-            )));
-        }
-        response
-            .bytes()
-            .await
-            .map(|bytes| Some(bytes.to_vec()))
-            .map_err(|err| bot_err(format!("contents raw read failed: {err}")))
+        decode_contents_json(&self.http, &value, &req).await
     }
 
     pub async fn find_labeled_pr_with_sha(
         &self,
-        owner: &str,
-        repo: &str,
-        label: &str,
-        head_sha: &str,
+        search: LabeledPrSearch<'_>,
     ) -> Result<Option<Value>> {
         let pulls: Vec<Value> = self
+            .http
             .get_json(&format!(
-                "/repos/{owner}/{repo}/issues?state=open&labels={label}"
+                "{}/issues?state=open&labels={}",
+                search.repo.base_path(),
+                search.label
             ))
             .await?;
         Ok(pulls.into_iter().find(|item| {
             item.get("body")
                 .and_then(|body| body.as_str())
-                .is_some_and(|body| body.contains(head_sha))
+                .is_some_and(|body| body.contains(search.head_sha))
         }))
     }
 
-    pub async fn main_sha(&self, owner: &str, repo: &str) -> Result<String> {
+    pub async fn main_sha(&self, repo: RepoRef<'_>) -> Result<String> {
         let value: Value = self
-            .get_json(&format!("/repos/{owner}/{repo}/git/ref/heads/main"))
+            .http
+            .get_json(&format!("{}/git/ref/heads/main", repo.base_path()))
             .await?;
         value
             .pointer("/object/sha")
@@ -279,26 +192,9 @@ impl GitHubClient {
             .ok_or_else(|| bot_err("main sha missing".to_string()))
     }
 
-    pub async fn file_sha(
-        &self,
-        owner: &str,
-        repo: &str,
-        path: &str,
-        branch: &str,
-    ) -> Result<Option<String>> {
-        let url =
-            format!("https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={branch}");
-        let response = self
-            .http
-            .get(url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.token))
-            .header(ACCEPT, "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", API_VERSION)
-            .header(USER_AGENT, "ibexharness-benchmark-bot")
-            .send()
-            .await
-            .map_err(|err| bot_err(format!("contents get failed: {err}")))?;
-
+    pub async fn file_sha(&self, req: RepoPathRef<'_>) -> Result<Option<String>> {
+        let path = contents_path(&req.repo, req.path, req.git_ref);
+        let response = self.http.get_raw(&path, "application/vnd.github+json").await?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
@@ -318,7 +214,7 @@ impl GitHubClient {
             .map(str::to_owned))
     }
 
-    pub async fn put_file(&self, owner: &str, repo: &str, req: PutFileRequest<'_>) -> Result<()> {
+    pub async fn put_file(&self, repo: RepoRef<'_>, req: PutFileRequest<'_>) -> Result<()> {
         let mut body = serde_json::json!({
             "message": req.message,
             "content": STANDARD.encode(req.bytes),
@@ -327,45 +223,35 @@ impl GitHubClient {
         if let Some(sha) = req.file_sha {
             body["sha"] = Value::String(sha.to_string());
         }
-        self.put_json(
-            &format!("/repos/{owner}/{repo}/contents/{}", req.path),
-            body,
-        )
-        .await?;
+        self.http
+            .put_json(
+                &format!("{}/contents/{}", repo.base_path(), req.path),
+                body,
+            )
+            .await?;
         Ok(())
     }
 
-    pub async fn open_pull_request(
-        &self,
-        owner: &str,
-        repo: &str,
-        branch: &str,
-        title: &str,
-        body: &str,
-    ) -> Result<Value> {
-        self.post_json(
-            &format!("/repos/{owner}/{repo}/pulls"),
-            serde_json::json!({
-                "title": title,
-                "head": branch,
-                "base": "main",
-                "body": body,
-                "maintainer_can_modify": false,
-            }),
-        )
-        .await
+    pub async fn open_pull_request(&self, req: OpenPullRequest<'_>) -> Result<Value> {
+        self.http
+            .post_json(
+                &format!("{}/pulls", req.repo.base_path()),
+                serde_json::json!({
+                    "title": req.title,
+                    "head": req.branch,
+                    "base": "main",
+                    "body": req.body,
+                    "maintainer_can_modify": false,
+                }),
+            )
+            .await
     }
 
-    pub async fn add_labels(
-        &self,
-        owner: &str,
-        repo: &str,
-        issue_number: i64,
-        labels: &[&str],
-    ) -> Result<()> {
+    pub async fn add_labels(&self, issue: IssueRef<'_>, labels: &[&str]) -> Result<()> {
         let _ = self
+            .http
             .post_json(
-                &format!("/repos/{owner}/{repo}/issues/{issue_number}/labels"),
+                &format!("{}/issues/{}/labels", issue.repo.base_path(), issue.number),
                 serde_json::json!({ "labels": labels }),
             )
             .await;
@@ -374,84 +260,126 @@ impl GitHubClient {
 
     pub async fn find_open_pr(
         &self,
-        owner: &str,
-        repo: &str,
+        repo: RepoRef<'_>,
         branch: &str,
     ) -> Result<Option<Value>> {
         let pulls: Vec<Value> = self
+            .http
             .get_json(&format!(
-                "/repos/{owner}/{repo}/pulls?state=open&head={owner}:{branch}"
+                "{}/pulls?state=open&head={}:{}",
+                repo.base_path(),
+                repo.owner,
+                branch
             ))
             .await?;
         Ok(pulls.into_iter().next())
     }
 
-    pub async fn post_issue_comment(
-        &self,
-        owner: &str,
-        repo: &str,
-        issue: i64,
-        body: &str,
-    ) -> Result<()> {
-        self.post_json(
-            &format!("/repos/{owner}/{repo}/issues/{issue}/comments"),
-            serde_json::json!({ "body": body }),
-        )
-        .await?;
+    pub async fn post_issue_comment(&self, issue: IssueRef<'_>, body: &str) -> Result<()> {
+        self.http
+            .post_json(
+                &format!("{}/issues/{}/comments", issue.repo.base_path(), issue.number),
+                serde_json::json!({ "body": body }),
+            )
+            .await?;
         Ok(())
     }
 
-    async fn post_json(&self, path: &str, body: Value) -> Result<Value> {
-        let url = format!("https://api.github.com{path}");
-        let response = self
-            .http
-            .post(url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.token))
-            .header(ACCEPT, "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", API_VERSION)
-            .header(USER_AGENT, "ibexharness-benchmark-bot")
-            .json(&body)
-            .send()
+    pub async fn list_issue_comments(&self, issue: IssueRef<'_>) -> Result<Vec<Value>> {
+        self.http
+            .get_json(&format!(
+                "{}/issues/{}/comments",
+                issue.repo.base_path(),
+                issue.number
+            ))
             .await
-            .map_err(|err| bot_err(format!("POST {path} failed: {err}")))?;
-
-        if !response.status().is_success() {
-            return Err(bot_err(format!(
-                "POST {path} failed: {}",
-                response.text().await.unwrap_or_default()
-            )));
-        }
-        response
-            .json::<Value>()
-            .await
-            .map_err(|err| bot_err(format!("POST {path} decode failed: {err}")))
     }
 
-    async fn put_json(&self, path: &str, body: Value) -> Result<Value> {
-        let url = format!("https://api.github.com{path}");
-        let response = self
-            .http
-            .put(url)
-            .header(AUTHORIZATION, format!("Bearer {}", self.token))
-            .header(ACCEPT, "application/vnd.github+json")
-            .header("X-GitHub-Api-Version", API_VERSION)
-            .header(USER_AGENT, "ibexharness-benchmark-bot")
-            .json(&body)
-            .send()
-            .await
-            .map_err(|err| bot_err(format!("PUT {path} failed: {err}")))?;
-
-        if !response.status().is_success() {
-            return Err(bot_err(format!(
-                "PUT {path} failed: {}",
-                response.text().await.unwrap_or_default()
-            )));
-        }
-        response
-            .json::<Value>()
-            .await
-            .map_err(|err| bot_err(format!("PUT {path} decode failed: {err}")))
+    pub async fn update_issue_comment(&self, update: IssueCommentUpdate<'_>) -> Result<()> {
+        self.http
+            .patch_json(
+                &format!(
+                    "{}/issues/comments/{}",
+                    update.repo.base_path(),
+                    update.comment_id
+                ),
+                serde_json::json!({ "body": update.body }),
+            )
+            .await?;
+        Ok(())
     }
+
+    pub async fn create_commit_status(&self, status: CommitStatus<'_>) -> Result<()> {
+        self.http
+            .post_json(
+                &format!("{}/statuses/{}", status.repo.base_path(), status.sha),
+                serde_json::json!({
+                    "state": status.state,
+                    "description": status.description,
+                    "context": status.context,
+                }),
+            )
+            .await?;
+        Ok(())
+    }
+}
+
+async fn decode_contents_json(
+    http: &HttpClient,
+    value: &Value,
+    req: &RepoPathRef<'_>,
+) -> Result<Option<Vec<u8>>> {
+    let encoding = value
+        .get("encoding")
+        .and_then(|item| item.as_str())
+        .unwrap_or("base64");
+    let content = value.get("content").and_then(|item| item.as_str());
+    if encoding == "none" || content.is_none_or(str::is_empty) {
+        return fetch_file_bytes_raw(http, req).await;
+    }
+    let encoded = content.ok_or_else(|| bot_err("contents missing content".to_string()))?;
+    let bytes = STANDARD
+        .decode(encoded.replace('\n', ""))
+        .map_err(|err| bot_err(format!("contents base64 decode failed: {err}")))?;
+    Ok(Some(bytes))
+}
+
+async fn fetch_file_bytes_raw(http: &HttpClient, req: &RepoPathRef<'_>) -> Result<Option<Vec<u8>>> {
+    let path = contents_path(&req.repo, req.path, req.git_ref);
+    let response = http.get_raw(&path, github_raw_accept()).await?;
+    if response.status() == StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    if !response.status().is_success() {
+        return Err(bot_err(format!(
+            "contents raw get failed: status {}",
+            response.status()
+        )));
+    }
+    response
+        .bytes()
+        .await
+        .map(|bytes| Some(bytes.to_vec()))
+        .map_err(|err| bot_err(format!("contents raw read failed: {err}")))
+}
+
+fn contents_path(repo: &RepoRef<'_>, path: &str, git_ref: &str) -> String {
+    format!("{}/contents/{path}?ref={git_ref}", repo.base_path())
+}
+
+fn find_benchmark_artifact_id(artifacts: &Value) -> Result<i64> {
+    let items = artifacts
+        .get("artifacts")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| bot_err("artifacts list missing".to_string()))?;
+    let artifact = items
+        .iter()
+        .find(|item| item.get("name").and_then(|v| v.as_str()) == Some("benchmark-data"))
+        .ok_or_else(|| bot_err("benchmark-data artifact not found".to_string()))?;
+    artifact
+        .get("id")
+        .and_then(|value| value.as_i64())
+        .ok_or_else(|| bot_err("artifact id missing".to_string()))
 }
 
 pub fn split_repo(full_name: &str) -> Result<(&str, &str)> {

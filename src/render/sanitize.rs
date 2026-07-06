@@ -1,5 +1,8 @@
 use regex::Regex;
 
+/// HTML anchor used to find and update the bot's sticky PR comment.
+pub const COMMENT_MARKER: &str = "<!-- IBEX_BOT_COMMENT -->";
+
 pub fn sanitize_sha(value: Option<&str>) -> String {
     let Some(value) = value else {
         return "unknown".to_string();
@@ -65,6 +68,86 @@ pub fn format_delta(delta: Option<f64>) -> String {
         }
         _ => "n/a".to_string(),
     }
+}
+
+/// Latency delta with trend emoji (lower p99 is better).
+pub fn format_latency_delta(delta: Option<f64>) -> String {
+    match delta {
+        Some(number) if !number.is_nan() => {
+            let sign = if number > 0.0 { "+" } else { "" };
+            let arrow = if number < 0.0 { "📉" } else if number > 0.0 { "📈" } else { "➖" };
+            format!("{arrow} **{sign}{number:.1}%**")
+        }
+        _ => "n/a".to_string(),
+    }
+}
+
+/// Throughput delta derived from latency regression (higher throughput is better).
+pub fn format_throughput_delta(latency_regression_pct: Option<f64>) -> String {
+    match latency_regression_pct {
+        Some(number) if !number.is_nan() => {
+            let throughput_delta = -number;
+            let sign = if throughput_delta > 0.0 { "+" } else { "" };
+            let arrow = if throughput_delta > 0.0 {
+                "📈"
+            } else if throughput_delta < 0.0 {
+                "📉"
+            } else {
+                "➖"
+            };
+            format!("{arrow} **{sign}{throughput_delta:.1}%**")
+        }
+        _ => "n/a".to_string(),
+    }
+}
+
+pub fn format_throughput(req_per_s: Option<f64>) -> String {
+    match req_per_s {
+        Some(number) if !number.is_nan() => {
+            if number >= 1000.0 {
+                format!("{:.1}k req/s", number / 1000.0)
+            } else {
+                format!("{number:.1} req/s")
+            }
+        }
+        _ => "—".to_string(),
+    }
+}
+
+pub fn visual_bar_filled(filled: usize, width: usize, label: &str) -> String {
+    let filled = filled.min(width);
+    format!(
+        "`{}` {}",
+        format!("{}{}", "█".repeat(filled), "░".repeat(width - filled)),
+        label
+    )
+}
+
+pub fn latency_visual_bar(p99_ms: Option<f64>, sla_ms: f64, width: usize) -> String {
+    let p99 = p99_ms.unwrap_or(sla_ms);
+    let ratio = (p99 / sla_ms).clamp(0.0, 1.0);
+    let filled = ((1.0 - ratio) * width as f64).round() as usize;
+    let label = if ratio < 0.25 {
+        "(Fast)"
+    } else if ratio < 0.75 {
+        "(OK)"
+    } else {
+        "(Slow)"
+    };
+    visual_bar_filled(filled, width, label)
+}
+
+pub fn throughput_visual_bar(req_per_s: Option<f64>, scale: f64, width: usize) -> String {
+    let rps = req_per_s.unwrap_or(0.0);
+    let filled = ((rps / scale) * width as f64).round() as usize;
+    let label = if rps >= scale * 0.8 {
+        "(Max)"
+    } else if rps >= scale * 0.4 {
+        "(Good)"
+    } else {
+        "(Low)"
+    };
+    visual_bar_filled(filled.min(width), width, label)
 }
 
 pub fn status_emoji(status: &str) -> &'static str {

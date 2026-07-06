@@ -5,7 +5,10 @@ use serde_json::Value;
 use crate::artifact::{extract_artifact_zip, validate_badge_svg};
 use crate::config::{BADGE_PATH, BENCHMARK_DATA_LABEL, BENCHMARK_DATA_PATH};
 use crate::error::{bot_err, Result};
-use crate::github::{split_repo, GitHubClient, PutFileRequest};
+use crate::github::{
+    split_repo, CreateBranch, GitHubClient, IssueRef, LabeledPrSearch, OpenPullRequest,
+    PutFileRequest, RepoPathRef, RepoRef,
+};
 use crate::model::{BenchmarkData, DispatchPayload};
 use crate::render::render_data_pr_body;
 use crate::validate::{
@@ -28,13 +31,15 @@ pub async fn publish_benchmark_data(
 ) -> Result<PublishResult> {
     let run = verify::verify_dispatch(client, repo_full, payload).await?;
     let (owner, repo) = split_repo(repo_full)?;
+    let repo_ref = RepoRef::new(owner, repo);
     let branch = format!("chore/bench-data-{}", payload.run_number);
     let head_sha = run
         .head_sha
         .as_deref()
         .ok_or_else(|| bot_err("verified run missing head_sha".to_string()))?;
 
-    if let Some(existing) = find_existing_publish_pr(client, owner, repo, &branch, head_sha).await?
+    if let Some(existing) =
+        find_existing_publish_pr(client, repo_ref, &branch, head_sha).await?
     {
         return Ok(PublishResult {
             skipped: true,
@@ -46,10 +51,10 @@ pub async fn publish_benchmark_data(
         });
     }
 
-    ensure_not_replay(client, owner, repo, payload, head_sha).await?;
+    ensure_not_replay(client, repo_ref, payload, head_sha).await?;
 
     let zip = client
-        .download_artifact_zip(owner, repo, payload.run_id)
+        .download_artifact_zip(repo_ref, payload.run_id)
         .await?;
     let extracted = extract_artifact_zip(&zip)?;
     validate_file(&extracted.json_path)?;
@@ -72,10 +77,14 @@ pub async fn publish_benchmark_data(
         });
     }
 
-    let main_sha = client.main_sha(owner, repo).await?;
-    if !client.ref_exists(owner, repo, &branch).await? {
+    let main_sha = client.main_sha(repo_ref).await?;
+    if !client.ref_exists(repo_ref, &branch).await? {
         client
-            .create_branch(owner, repo, &branch, &main_sha)
+            .create_branch(CreateBranch {
+                repo: repo_ref,
+                branch: &branch,
+                sha: &main_sha,
+            })
             .await?;
     }
 
@@ -83,14 +92,21 @@ pub async fn publish_benchmark_data(
         "chore(bench): benchmark data update (run #{})",
         payload.run_number
     );
-    let json_sha = client
-        .file_sha(owner, repo, BENCHMARK_DATA_PATH, &branch)
-        .await?;
-    let badge_sha = client.file_sha(owner, repo, BADGE_PATH, &branch).await?;
+    let json_path = RepoPathRef {
+        repo: repo_ref,
+        path: BENCHMARK_DATA_PATH,
+        git_ref: &branch,
+    };
+    let badge_path = RepoPathRef {
+        repo: repo_ref,
+        path: BADGE_PATH,
+        git_ref: &branch,
+    };
+    let json_sha = client.file_sha(json_path).await?;
+    let badge_sha = client.file_sha(badge_path).await?;
     client
         .put_file(
-            owner,
-            repo,
+            repo_ref,
             PutFileRequest {
                 path: BENCHMARK_DATA_PATH,
                 branch: &branch,
@@ -102,8 +118,7 @@ pub async fn publish_benchmark_data(
         .await?;
     client
         .put_file(
-            owner,
-            repo,
+            repo_ref,
             PutFileRequest {
                 path: BADGE_PATH,
                 branch: &branch,
@@ -124,11 +139,22 @@ pub async fn publish_benchmark_data(
         payload.run_number
     );
     let pr = client
-        .open_pull_request(owner, repo, &branch, &title, &body)
+        .open_pull_request(OpenPullRequest {
+            repo: repo_ref,
+            branch: &branch,
+            title: &title,
+            body: &body,
+        })
         .await?;
     if let Some(number) = pr.get("number").and_then(Value::as_i64) {
         client
-            .add_labels(owner, repo, number, &["automated", BENCHMARK_DATA_LABEL])
+            .add_labels(
+                IssueRef {
+                    repo: repo_ref,
+                    number,
+                },
+                &["automated", BENCHMARK_DATA_LABEL],
+            )
             .await?;
     }
 
@@ -144,13 +170,16 @@ pub async fn publish_benchmark_data(
 
 async fn ensure_not_replay(
     client: &GitHubClient,
-    owner: &str,
-    repo: &str,
+    repo: RepoRef<'_>,
     payload: &DispatchPayload,
     head_sha: &str,
 ) -> Result<()> {
     let published = client
-        .get_file_bytes(owner, repo, BENCHMARK_DATA_PATH, "main")
+        .get_file_bytes(RepoPathRef {
+            repo,
+            path: BENCHMARK_DATA_PATH,
+            git_ref: "main",
+        })
         .await?;
     let Some(bytes) = published else {
         return Ok(());
@@ -173,15 +202,18 @@ async fn ensure_not_replay(
 
 async fn find_existing_publish_pr(
     client: &GitHubClient,
-    owner: &str,
-    repo: &str,
+    repo: RepoRef<'_>,
     branch: &str,
     head_sha: &str,
 ) -> Result<Option<Value>> {
-    if let Some(existing) = client.find_open_pr(owner, repo, branch).await? {
+    if let Some(existing) = client.find_open_pr(repo, branch).await? {
         return Ok(Some(existing));
     }
     client
-        .find_labeled_pr_with_sha(owner, repo, BENCHMARK_DATA_LABEL, head_sha)
+        .find_labeled_pr_with_sha(LabeledPrSearch {
+            repo,
+            label: BENCHMARK_DATA_LABEL,
+            head_sha,
+        })
         .await
 }
