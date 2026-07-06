@@ -11,23 +11,27 @@ pub struct GitHubClient {
     http: HttpClient,
 }
 
+#[derive(Clone, Copy)]
 pub struct RepoRef<'a> {
     pub owner: &'a str,
     pub repo: &'a str,
 }
 
+#[derive(Clone, Copy)]
 pub struct RepoPathRef<'a> {
     pub repo: RepoRef<'a>,
     pub path: &'a str,
     pub git_ref: &'a str,
 }
 
+#[derive(Clone, Copy)]
 pub struct CreateBranch<'a> {
     pub repo: RepoRef<'a>,
     pub branch: &'a str,
     pub sha: &'a str,
 }
 
+#[derive(Clone, Copy)]
 pub struct OpenPullRequest<'a> {
     pub repo: RepoRef<'a>,
     pub branch: &'a str,
@@ -35,17 +39,20 @@ pub struct OpenPullRequest<'a> {
     pub body: &'a str,
 }
 
+#[derive(Clone, Copy)]
 pub struct IssueRef<'a> {
     pub repo: RepoRef<'a>,
     pub number: i64,
 }
 
+#[derive(Clone, Copy)]
 pub struct IssueCommentUpdate<'a> {
     pub repo: RepoRef<'a>,
     pub comment_id: i64,
     pub body: &'a str,
 }
 
+#[derive(Clone, Copy)]
 pub struct CommitStatus<'a> {
     pub repo: RepoRef<'a>,
     pub sha: &'a str,
@@ -54,6 +61,7 @@ pub struct CommitStatus<'a> {
     pub context: &'a str,
 }
 
+#[derive(Clone, Copy)]
 pub struct LabeledPrSearch<'a> {
     pub repo: RepoRef<'a>,
     pub label: &'a str,

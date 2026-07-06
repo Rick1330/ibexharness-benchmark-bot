@@ -476,8 +476,8 @@ fn render_microbench_details(run: &BenchmarkRun) -> String {
     let ci = match (low, high) {
         (Some(low), Some(high)) => format!(
             "[{} - {}]",
-            format_number_precise(low, 0),
-            format_number_precise(high, 0)
+            format_number_precise(Some(low), 0),
+            format_number_precise(Some(high), 0)
         ),
         _ => "—".to_string(),
     };
@@ -514,7 +514,7 @@ fn render_env_details(run: &BenchmarkRun, baseline_sha: Option<&str>) -> String 
         _ => "—".to_string(),
     };
     let baseline_branch = baseline_sha
-        .map(sanitize_sha)
+        .map(|sha| sanitize_sha(Some(sha)))
         .filter(|sha| sha != "invalid" && sha != "unknown")
         .map(|sha| format!("`{sha}`"))
         .unwrap_or_else(|| "`main`".to_string());

@@ -195,7 +195,7 @@ async fn upsert_pr_comment(
         number: pr_number,
     };
     let comments = client.list_issue_comments(issue).await?;
-    if let Some(existing) = comments.iter().find(comment_has_marker) {
+    if let Some(existing) = comments.iter().find(|comment| comment_has_marker(comment)) {
         let id = existing
             .get("id")
             .and_then(|value| value.as_i64())

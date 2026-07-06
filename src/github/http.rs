@@ -57,13 +57,14 @@ impl HttpClient {
     }
 
     async fn json_response(&self, method: Method, path: &str, body: Value) -> Result<Value> {
+        let label = method.clone();
         let response = self
             .send(method, path, github_json_accept(), Some(body))
             .await?;
         response
             .json::<Value>()
             .await
-            .map_err(|err| bot_err(format!("{method} {path} decode failed: {err}")))
+            .map_err(|err| bot_err(format!("{label} {path} decode failed: {err}")))
     }
 
     async fn send(
@@ -73,18 +74,19 @@ impl HttpClient {
         accept: &str,
         body: Option<Value>,
     ) -> Result<Response> {
+        let label = method.clone();
         let url = format!("{API_BASE}{path}");
-        let mut request = self.authorized(self.http.request(method.clone(), url), accept);
+        let mut request = self.authorized(self.http.request(method, url), accept);
         if let Some(payload) = body {
             request = request.json(&payload);
         }
         let response = request
             .send()
             .await
-            .map_err(|err| bot_err(format!("{method} {path} failed: {err}")))?;
+            .map_err(|err| bot_err(format!("{label} {path} failed: {err}")))?;
         if !response.status().is_success() {
             return Err(bot_err(format!(
-                "{method} {path} failed: {}",
+                "{label} {path} failed: {}",
                 response.text().await.unwrap_or_default()
             )));
         }
