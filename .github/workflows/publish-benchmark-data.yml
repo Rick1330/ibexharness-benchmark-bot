@@ -42,20 +42,10 @@ jobs:
           ref: ${{ vars.BOT_RELEASE_SHA }}
           persist-credentials: false
 
-      - name: Harden the runner (Block non-allowlisted egress)
+      - name: Harden the runner (Audit outbound calls)
         uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2.19.4
         with:
-          egress-policy: block
-          allowed-endpoints: |
-            api.github.com:443
-            github.com:443
-            objects.githubusercontent.com:443
-            codeload.github.com:443
-            pipelines.actions.githubusercontent.com:443
-            productionresultssa0.blob.core.windows.net:443
-            index.crates.io:443
-            static.crates.io:443
-            static.rust-lang.org:443
+          egress-policy: audit
 
       - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
         with:
