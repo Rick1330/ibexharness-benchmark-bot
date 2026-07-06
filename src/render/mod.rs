@@ -473,7 +473,9 @@ fn stage_p99_rows(stages: &StageMetrics) -> Vec<Vec<String>> {
     entries
         .into_iter()
         .filter_map(|(name, value)| {
-            value.map(|ms| vec![name.to_string(), format_latency_ms(Some(ms))])
+            value
+                .filter(|ms| *ms > 0.0)
+                .map(|ms| vec![name.to_string(), format_latency_ms(Some(ms))])
         })
         .collect()
 }
