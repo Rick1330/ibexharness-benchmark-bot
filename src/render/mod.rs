@@ -402,7 +402,7 @@ fn render_gate_table(gate: &GateResult) -> String {
     if checks.is_empty() {
         return "_No gate checks available._".to_string();
     }
-    let rows: Vec<Vec<String>> = checks.iter().map(|check| gate_check_row(check)).collect();
+    let rows: Vec<Vec<String>> = checks.iter().map(gate_check_row).collect();
     markdown_table(&["Check", "Value", "Threshold", "Result"], &rows)
 }
 
