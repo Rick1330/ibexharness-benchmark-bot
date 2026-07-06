@@ -75,7 +75,13 @@ pub fn format_latency_delta(delta: Option<f64>) -> String {
     match delta {
         Some(number) if !number.is_nan() => {
             let sign = if number > 0.0 { "+" } else { "" };
-            let arrow = if number < 0.0 { "📉" } else if number > 0.0 { "📈" } else { "➖" };
+            let arrow = if number < 0.0 {
+                "📉"
+            } else if number > 0.0 {
+                "📈"
+            } else {
+                "➖"
+            };
             format!("{arrow} **{sign}{number:.1}%**")
         }
         _ => "n/a".to_string(),

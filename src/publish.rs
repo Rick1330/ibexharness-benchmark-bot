@@ -38,9 +38,7 @@ pub async fn publish_benchmark_data(
         .as_deref()
         .ok_or_else(|| bot_err("verified run missing head_sha".to_string()))?;
 
-    if let Some(existing) =
-        find_existing_publish_pr(client, repo_ref, &branch, head_sha).await?
-    {
+    if let Some(existing) = find_existing_publish_pr(client, repo_ref, &branch, head_sha).await? {
         return Ok(PublishResult {
             skipped: true,
             pr_url: existing

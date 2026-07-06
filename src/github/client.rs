@@ -110,13 +110,13 @@ impl GitHubClient {
     pub async fn download_artifact_zip(&self, repo: RepoRef<'_>, run_id: i64) -> Result<Vec<u8>> {
         let artifacts: Value = self
             .http
-            .get_json(&format!("{}/actions/runs/{run_id}/artifacts", repo.base_path()))
+            .get_json(&format!(
+                "{}/actions/runs/{run_id}/artifacts",
+                repo.base_path()
+            ))
             .await?;
         let artifact_id = find_benchmark_artifact_id(&artifacts)?;
-        let path = format!(
-            "{}/actions/artifacts/{artifact_id}/zip",
-            repo.base_path()
-        );
+        let path = format!("{}/actions/artifacts/{artifact_id}/zip", repo.base_path());
         let response = self
             .http
             .get_with_accept(&path, "application/vnd.github+json")
@@ -144,7 +144,10 @@ impl GitHubClient {
 
     pub async fn get_file_bytes(&self, req: RepoPathRef<'_>) -> Result<Option<Vec<u8>>> {
         let path = contents_path(&req.repo, req.path, req.git_ref);
-        let response = self.http.get_raw(&path, "application/vnd.github+json").await?;
+        let response = self
+            .http
+            .get_raw(&path, "application/vnd.github+json")
+            .await?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
@@ -194,7 +197,10 @@ impl GitHubClient {
 
     pub async fn file_sha(&self, req: RepoPathRef<'_>) -> Result<Option<String>> {
         let path = contents_path(&req.repo, req.path, req.git_ref);
-        let response = self.http.get_raw(&path, "application/vnd.github+json").await?;
+        let response = self
+            .http
+            .get_raw(&path, "application/vnd.github+json")
+            .await?;
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
@@ -224,10 +230,7 @@ impl GitHubClient {
             body["sha"] = Value::String(sha.to_string());
         }
         self.http
-            .put_json(
-                &format!("{}/contents/{}", repo.base_path(), req.path),
-                body,
-            )
+            .put_json(&format!("{}/contents/{}", repo.base_path(), req.path), body)
             .await?;
         Ok(())
     }
@@ -258,11 +261,7 @@ impl GitHubClient {
         Ok(())
     }
 
-    pub async fn find_open_pr(
-        &self,
-        repo: RepoRef<'_>,
-        branch: &str,
-    ) -> Result<Option<Value>> {
+    pub async fn find_open_pr(&self, repo: RepoRef<'_>, branch: &str) -> Result<Option<Value>> {
         let pulls: Vec<Value> = self
             .http
             .get_json(&format!(
@@ -278,7 +277,11 @@ impl GitHubClient {
     pub async fn post_issue_comment(&self, issue: IssueRef<'_>, body: &str) -> Result<()> {
         self.http
             .post_json(
-                &format!("{}/issues/{}/comments", issue.repo.base_path(), issue.number),
+                &format!(
+                    "{}/issues/{}/comments",
+                    issue.repo.base_path(),
+                    issue.number
+                ),
                 serde_json::json!({ "body": body }),
             )
             .await?;

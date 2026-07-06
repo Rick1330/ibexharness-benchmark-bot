@@ -173,10 +173,7 @@ fn render_performance_summary(run: &BenchmarkRun, baseline_sha: Option<&str>) ->
     let throughput = format!("`{}`", format_throughput(k6.and_then(|k| k.req_per_s)));
     let error_rate = format!(
         "`{}%`",
-        sanitize::format_number_precise(
-            k6.and_then(|k| k.error_rate).map(|v| v * 100.0),
-            2
-        )
+        sanitize::format_number_precise(k6.and_then(|k| k.error_rate).map(|v| v * 100.0), 2)
     );
     let latency_delta = format_latency_delta(run.regression_vs_baseline_pct);
     let throughput_delta = format_throughput_delta(run.regression_vs_baseline_pct);
@@ -195,7 +192,11 @@ fn render_performance_summary(run: &BenchmarkRun, baseline_sha: Option<&str>) ->
                 "**P99 latency**".to_string(),
                 p99,
                 baseline_col,
-                sanitize::latency_visual_bar(k6.and_then(|k| k.p99_ms), P99_SLA_MS, VISUAL_BAR_WIDTH),
+                sanitize::latency_visual_bar(
+                    k6.and_then(|k| k.p99_ms),
+                    P99_SLA_MS,
+                    VISUAL_BAR_WIDTH,
+                ),
             ],
             vec![
                 "**Throughput**".to_string(),
@@ -254,7 +255,11 @@ fn render_verdict_note(status: &str, regression_pct: Option<f64>) -> String {
     note
 }
 
-fn render_details_block(run: &BenchmarkRun, gate: &GateResult, baseline_sha: Option<&str>) -> String {
+fn render_details_block(
+    run: &BenchmarkRun,
+    gate: &GateResult,
+    baseline_sha: Option<&str>,
+) -> String {
     let mut lines = vec![
         "<details>".to_string(),
         "<summary><b>📊 Detailed breakdown</b></summary>".to_string(),
@@ -299,7 +304,12 @@ fn render_k6_detail_table(run: &BenchmarkRun, gate: &GateResult) -> String {
         &[
             gate_row("P50 latency", k6.and_then(|k| k.p50_ms), None, None),
             gate_row("P95 latency", k6.and_then(|k| k.p95_ms), None, None),
-            gate_row("P99 latency", k6.and_then(|k| k.p99_ms), p99_limit, Some(P99_SLA_MS)),
+            gate_row(
+                "P99 latency",
+                k6.and_then(|k| k.p99_ms),
+                p99_limit,
+                Some(P99_SLA_MS),
+            ),
             gate_row(
                 "Throughput",
                 k6.and_then(|k| k.req_per_s),
@@ -392,10 +402,7 @@ fn render_gate_table(gate: &GateResult) -> String {
     if checks.is_empty() {
         return "_No gate checks available._".to_string();
     }
-    let rows: Vec<Vec<String>> = checks
-        .iter()
-        .map(|check| gate_check_row(check))
-        .collect();
+    let rows: Vec<Vec<String>> = checks.iter().map(|check| gate_check_row(check)).collect();
     markdown_table(&["Check", "Value", "Threshold", "Result"], &rows)
 }
 
@@ -436,7 +443,8 @@ fn non_zero_stage_rows(stages: &StageMetrics) -> Vec<Vec<String>> {
     entries
         .into_iter()
         .filter_map(|(name, value)| {
-            value.filter(|ms| *ms >= STAGE_MIN_MS)
+            value
+                .filter(|ms| *ms >= STAGE_MIN_MS)
                 .map(|ms| vec![name.to_string(), format_number(Some(ms))])
         })
         .collect()
@@ -466,7 +474,11 @@ fn render_microbench_details(run: &BenchmarkRun) -> String {
         .and_then(|v| v.get("ci_95_high"))
         .and_then(|v| v.as_f64());
     let ci = match (low, high) {
-        (Some(low), Some(high)) => format!("[{} - {}]", format_number_precise(low, 0), format_number_precise(high, 0)),
+        (Some(low), Some(high)) => format!(
+            "[{} - {}]",
+            format_number_precise(low, 0),
+            format_number_precise(high, 0)
+        ),
         _ => "—".to_string(),
     };
 
@@ -492,7 +504,11 @@ fn render_microbench_details(run: &BenchmarkRun) -> String {
 }
 
 fn render_env_details(run: &BenchmarkRun, baseline_sha: Option<&str>) -> String {
-    let runner = match (run.runner_os.as_deref(), run.runner_vcpus, run.runner_ram_gb) {
+    let runner = match (
+        run.runner_os.as_deref(),
+        run.runner_vcpus,
+        run.runner_ram_gb,
+    ) {
         (Some(os), Some(vcpus), Some(ram)) => format!("{os} ({vcpus} vCPU, {ram}GB RAM)"),
         (Some(os), _, _) => os.to_string(),
         _ => "—".to_string(),
