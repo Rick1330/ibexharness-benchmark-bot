@@ -76,5 +76,6 @@ fn render_pr_comment_hides_zero_stage_rows() {
         });
     }
     let body = render_pr_comment(&data, &gate).expect("render");
-    assert!(!body.contains("Stage breakdown"));
+    assert!(!body.contains("### Stage breakdown (synthetic)"));
+    assert!(!body.contains("| Auth LRU |"));
 }
