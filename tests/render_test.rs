@@ -28,6 +28,33 @@ fn render_pr_comment_uses_triage_layout() {
 }
 
 #[test]
+fn render_pr_comment_formats_sub_ms_stages() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut data: BenchmarkData = serde_json::from_str(
+        &fs::read_to_string(root.join("tests/fixtures/benchmark-data.json")).unwrap(),
+    )
+    .unwrap();
+    let gate: GateResult = serde_json::from_str(
+        &fs::read_to_string(root.join("tests/fixtures/gate-result.json")).unwrap(),
+    )
+    .unwrap();
+    if let Some(run) = data.runs.as_mut().and_then(|runs| runs.first_mut()) {
+        run.stages = Some(ibex_benchmark_bot::model::StageMetrics {
+            auth_lru_p99_ms: Some(0.000376),
+            auth_grpc_p99_ms: Some(0.0),
+            rate_limit_p99_ms: Some(0.0),
+            directive_resolve_p99_ms: Some(0.0),
+            prompt_inject_p99_ms: Some(0.0),
+            total_overhead_p99_ms: Some(0.000376),
+        });
+    }
+    let body = render_pr_comment(&data, &gate).expect("render");
+    assert!(body.contains("Stage breakdown"));
+    assert!(body.contains("376 ns") || body.contains("0.38 µs"));
+    assert!(body.contains("Data model"));
+}
+
+#[test]
 fn render_pr_comment_hides_zero_stage_rows() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut data: BenchmarkData = serde_json::from_str(
