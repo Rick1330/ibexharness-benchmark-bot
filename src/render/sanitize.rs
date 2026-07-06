@@ -123,8 +123,9 @@ pub fn format_throughput(req_per_s: Option<f64>) -> String {
 pub fn visual_bar_filled(filled: usize, width: usize, label: &str) -> String {
     let filled = filled.min(width);
     format!(
-        "`{}` {}",
-        format!("{}{}", "█".repeat(filled), "░".repeat(width - filled)),
+        "`{}{} ` {}",
+        "█".repeat(filled),
+        "░".repeat(width - filled),
         label
     )
 }
