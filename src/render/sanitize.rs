@@ -110,7 +110,8 @@ pub fn format_throughput_delta(latency_regression_pct: Option<f64>) -> String {
 /// Format sub-millisecond stage values without rounding to misleading 0.00 ms.
 pub fn format_latency_ms(value: Option<f64>) -> String {
     match value {
-        None | Some(v) if v.is_nan() => "—".to_string(),
+        None => "—".to_string(),
+        Some(v) if v.is_nan() => "—".to_string(),
         Some(0.0) => "0 ms".to_string(),
         Some(value) => {
             let abs = value.abs();
@@ -130,7 +131,8 @@ pub fn format_latency_ms(value: Option<f64>) -> String {
 
 pub fn format_ns_per_op(value: Option<f64>) -> String {
     match value {
-        None | Some(v) if v.is_nan() || v <= 0.0 => "—".to_string(),
+        None => "—".to_string(),
+        Some(v) if v.is_nan() || v <= 0.0 => "—".to_string(),
         Some(value) if value >= 1_000_000.0 => format!("{:.2} ms/op", value / 1_000_000.0),
         Some(value) if value >= 1000.0 => format!("{:.2} µs/op", value / 1000.0),
         Some(value) => format!("{value:.1} ns/op"),
