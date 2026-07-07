@@ -27,18 +27,11 @@ pub fn render_pr_comment(data: &BenchmarkData, gate: &GateResult) -> Result<Stri
         .and_then(|runs| runs.first())
         .ok_or_else(|| "benchmark data has no runs".to_string())?;
 
-    let short_sha = resolve_short_sha(run);
     let status = run.status.as_deref().unwrap_or("unknown");
-    let run_number = run
-        .run_number
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| "?".to_string());
     let baseline_sha = data.baseline_sha.as_deref();
 
     let sections = vec![
         COMMENT_MARKER.to_string(),
-        render_header(&short_sha, &run_number),
-        String::new(),
         render_verdict_banner(status, gate, run),
         String::new(),
         "---".to_string(),
@@ -124,20 +117,6 @@ pub fn render_data_pr_body(
     lines.join("\n")
 }
 
-fn render_header(short_sha: &str, run_number: &str) -> String {
-    format!(
-        r#"<p align="left">
-  <a href="{DOCS_BASE}/{short_sha}">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="{BRAND_MARK_DARK}">
-      <img src="{BRAND_MARK_LIGHT}" width="{BRAND_LOGO_PX}" height="{BRAND_LOGO_PX}" align="left" valign="middle" alt="{BRAND_NAME}">
-    </picture>
-  </a>
-  <strong>{BRAND_NAME}</strong> &nbsp;•&nbsp; Run #{run_number} &nbsp;•&nbsp; <code>{short_sha}</code>
-</p>"#
-    )
-}
-
 fn render_compact_brand() -> String {
     format!(
         r#"<p align="left">
@@ -200,7 +179,7 @@ fn render_performance_summary(run: &BenchmarkRun, baseline_sha: Option<&str>) ->
         "⚠️ Elevated".to_string()
     };
 
-    markdown_table(
+    markdown_table_raw(
         &["Metric", "Value", "vs Baseline", "Visual"],
         &[
             vec![
@@ -453,7 +432,7 @@ fn render_stage_details(stages: Option<&StageMetrics>) -> Option<String> {
     if rows.is_empty() {
         return None;
     }
-    let table = markdown_table(&["Stage", "p99"], &rows);
+    let table = markdown_table_raw(&["Stage", "p99"], &rows);
     Some(format!(
         "### Stage breakdown (synthetic)\n\n\
          _Derived from Go microbenchmarks; use k6 p99 for end-to-end SLA._\n\n\
@@ -521,7 +500,7 @@ fn render_microbench_details(run: &BenchmarkRun) -> String {
 
     format!(
         "<details>\n<summary><b>🔬 Microbenchmarks (Go)</b></summary>\n\n{}\n</details>",
-        markdown_table(
+        markdown_table_raw(
             &["Metric", "Value", "95% CI"],
             &[
                 vec!["ns/op".to_string(), format_ns_per_op(ns), ci],
@@ -582,6 +561,14 @@ fn resolve_short_sha(run: &BenchmarkRun) -> String {
 }
 
 fn markdown_table(headers: &[&str], rows: &[Vec<String>]) -> String {
+    markdown_table_with_escape(headers, rows, true)
+}
+
+fn markdown_table_raw(headers: &[&str], rows: &[Vec<String>]) -> String {
+    markdown_table_with_escape(headers, rows, false)
+}
+
+fn markdown_table_with_escape(headers: &[&str], rows: &[Vec<String>], escape_body: bool) -> String {
     let header_cells: Vec<String> = headers.iter().map(|cell| escape_cell(Some(cell))).collect();
     let mut lines = vec![
         format!("| {} |", header_cells.join(" | ")),
@@ -597,7 +584,13 @@ fn markdown_table(headers: &[&str], rows: &[Vec<String>]) -> String {
     for row in rows {
         let cells: Vec<String> = row
             .iter()
-            .map(|cell| escape_cell(Some(cell.as_str())))
+            .map(|cell| {
+                if escape_body {
+                    escape_cell(Some(cell.as_str()))
+                } else {
+                    cell.clone()
+                }
+            })
             .collect();
         lines.push(format!("| {} |", cells.join(" | ")));
     }

@@ -17,14 +17,16 @@ fn render_pr_comment_uses_triage_layout() {
     .unwrap();
     let body = render_pr_comment(&data, &gate).expect("render");
     assert!(body.contains(COMMENT_MARKER));
-    assert!(body.contains("IBEX Benchmark Bot"));
-    assert!(body.contains("width=\"32\""));
+    assert!(!body.contains("align=\"left\""));
+    assert!(!body.contains("width=\"32\""));
     assert!(body.contains("Performance summary"));
     assert!(body.contains("img.shields.io"));
     assert!(body.contains("k6 p99 SLA"));
     assert!(body.contains("Auth LRU"));
     assert!(!body.contains("```mermaid"));
     assert!(body.contains("<details>"));
+    assert!(body.contains("](https://github.com/Rick1330/ibex-harness/commit/"));
+    assert!(!body.contains("`[`"));
 }
 
 #[test]
