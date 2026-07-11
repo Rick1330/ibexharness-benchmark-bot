@@ -114,7 +114,7 @@ pub async fn run(cli: Cli) -> Result<()> {
             let repo_ref = RepoRef::new(owner, repo);
             let client = comment_client(&github_token).await?;
             upsert_pr_comment(&client, repo_ref, pr_number, &body).await?;
-            post_commit_status(repo_ref, &data, &gate, &github_token).await?;
+            post_commit_status(&client, repo_ref, &data, &gate).await?;
         }
     }
     Ok(())
@@ -231,10 +231,10 @@ fn comment_has_marker(comment: &serde_json::Value) -> bool {
 }
 
 async fn post_commit_status(
+    client: &GitHubClient,
     repo: RepoRef<'_>,
     data: &BenchmarkData,
     gate: &GateResult,
-    github_token: &str,
 ) -> Result<()> {
     let Some(run) = data.runs.as_ref().and_then(|runs| runs.first()) else {
         return Ok(());
@@ -244,7 +244,6 @@ async fn post_commit_status(
     };
     let status = run.status.as_deref().unwrap_or("unknown");
     let (state, description) = commit_status_for(status, gate);
-    let client = GitHubClient::new(github_token.to_string());
     match client
         .create_commit_status(CommitStatus {
             repo,
