@@ -7,7 +7,7 @@
 3. **Homepage URL:** `https://github.com/Rick1330/ibexharness-benchmark-bot`
 4. **Webhook:** inactive (not used)
 5. **Logo:** upload `docs/brand/android-chrome-512x512.png` (IBEX mark shown beside bot comments)
-6. **Permissions:** Contents R/W, Pull requests R/W, Actions read, Metadata read
+6. **Permissions:** Contents R/W, Pull requests R/W, Commit statuses R/W, Actions read, Metadata read
 7. **Install on:** this account only
 8. Note **App ID**; generate and save **private key** (.pem)
 
