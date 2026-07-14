@@ -2,10 +2,21 @@
 
 ## Normal operation
 
-1. ibex-harness **Benchmarks** completes on `main` (schedule, push, or manual).
-2. `notify-benchmark-bot` sends `repository_dispatch` to this repo.
-3. **publish-benchmark-data** workflow checks out `vars.BOT_RELEASE_SHA`, verifies run, validates artifact, opens PR on ibex-harness.
-4. Maintainer merges data PR after harness CI is green.
+### Two separate paths (do not confuse)
+
+| Path | Where | Cadence | Outcome |
+| --- | --- | --- | --- |
+| **PR quality comment** | ibex-harness `Benchmarks` on every `pull_request` | Every PR | App posts a benchmark comment on the PR. **Never** opens a data PR. |
+| **Weekly data publish** | ibex-harness `notify-benchmark-bot` → this repo `Publish benchmark data` | **Sunday 04:00 UTC** (or manual `workflow_dispatch`) | Bot opens one `chore(bench): …` PR to update `web/public/benchmarks/` on `main`. |
+
+### Weekly publish flow
+
+1. ibex-harness **Benchmarks** completes on `main` via **schedule** (or manual dispatch).
+2. `notify-benchmark-bot` sends `repository_dispatch` (`benchmark_main_complete`) **only** for schedule / workflow_dispatch — **not** for ordinary merges to `main`.
+3. **publish-benchmark-data** checks out `vars.BOT_RELEASE_SHA`, verifies the harness run, validates the artifact, opens (or updates) a data PR on ibex-harness.
+4. Maintainer merges the weekly data PR after harness CI is green.
+
+Pushing proxy/auth changes to `main` may still **collect** benchmarks for CI overlays, but it does **not** dispatch this bot.
 
 ## Release pinning (`BOT_RELEASE_SHA`)
 
@@ -29,6 +40,8 @@ When a publish failed but the harness benchmark run succeeded:
    - `run_number`: workflow run number (not run ID)
    - `dry_run`: `true` first to validate only
 3. Workflow verifies and opens PR (or skips if idempotent duplicate).
+
+To force a weekly-style publish mid-week: run harness **Benchmarks** with `workflow_dispatch` on `main` (that is the only non-Sunday path that notifies this bot).
 
 ## Failure: verify_dispatch rejected run
 
@@ -79,7 +92,7 @@ When a publish failed but the harness benchmark run succeeded:
 
 ## Disable bot temporarily
 
-Set ibex-harness variable `BENCHMARK_BOT_ENABLED` to `false`. Notify job skips; no dispatches sent.
+Set ibex-harness variable `BENCHMARK_BOT_ENABLED` to `false`. Notify job skips; no dispatches sent. PR comments still require App secrets when benchmarks run on PRs.
 
 ## Incident response
 
@@ -102,6 +115,7 @@ Use GitHub email notifications for workflow failures.
 
 After enabling the bot:
 
-1. Confirm two weekly benchmark cycles produce bot PRs.
-2. Confirm docs site history page shows new runs after merge.
-3. Confirm PR benchmark comments use pinned Rust renderer (rich format).
+1. Confirm every harness PR receives a benchmark quality comment (no data PR).
+2. Confirm Sunday cron (or one manual main `workflow_dispatch`) produces **one** bot data PR.
+3. Confirm docs site history page shows new runs after that PR merges.
+4. Confirm PR comments use the pinned Rust renderer (rich format).
