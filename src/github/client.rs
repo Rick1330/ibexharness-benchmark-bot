@@ -76,6 +76,46 @@ pub struct PutFileRequest<'a> {
     pub file_sha: Option<&'a str>,
 }
 
+/// One path/content pair for a single Git Data API commit.
+pub struct CommitFile<'a> {
+    pub path: &'a str,
+    pub bytes: &'a [u8],
+}
+
+pub struct CommitFilesRequest<'a> {
+    pub branch: &'a str,
+    pub message: &'a str,
+    pub files: &'a [CommitFile<'a>],
+}
+
+const BOT_COMMIT_NAME: &str = "ibex-harness-benchmark[bot]";
+
+/// DCO trailer + noreply email derived from APP_ID (GitHub App convention).
+pub fn bot_commit_message(subject: &str) -> String {
+    let app_id = std::env::var("APP_ID").unwrap_or_else(|_| "0".to_string());
+    let email = format!("{app_id}+ibex-harness-benchmark[bot]@users.noreply.github.com");
+    format!("{subject}\n\nSigned-off-by: {BOT_COMMIT_NAME} <{email}>")
+}
+
+fn bot_author_email() -> String {
+    let app_id = std::env::var("APP_ID").unwrap_or_else(|_| "0".to_string());
+    format!("{app_id}+ibex-harness-benchmark[bot]@users.noreply.github.com")
+}
+
+#[cfg(test)]
+mod message_tests {
+    use super::bot_commit_message;
+
+    #[test]
+    fn commit_message_includes_signed_off_by() {
+        std::env::set_var("APP_ID", "424242");
+        let message = bot_commit_message("chore(bench): benchmark data update (run #1)");
+        assert!(message.contains("Signed-off-by: ibex-harness-benchmark[bot]"));
+        assert!(message.contains("424242+ibex-harness-benchmark[bot]@users.noreply.github.com"));
+        std::env::remove_var("APP_ID");
+    }
+}
+
 impl<'a> RepoRef<'a> {
     pub fn new(owner: &'a str, repo: &'a str) -> Self {
         Self { owner, repo }
@@ -241,6 +281,122 @@ impl GitHubClient {
             .put_json(&format!("{}/contents/{}", repo.base_path(), req.path), body)
             .await?;
         Ok(())
+    }
+
+    /// Create one commit on `branch` that updates all `files` (Git Data API).
+    pub async fn commit_files(
+        &self,
+        repo: RepoRef<'_>,
+        req: CommitFilesRequest<'_>,
+    ) -> Result<String> {
+        if req.files.is_empty() {
+            return Err(bot_err("commit_files requires at least one file".to_string()));
+        }
+        let parent_sha = self.branch_sha(repo, req.branch).await?;
+        let base_tree = self.commit_tree_sha(repo, &parent_sha).await?;
+
+        let mut tree_items = Vec::with_capacity(req.files.len());
+        for file in req.files {
+            let blob_sha = self.create_blob(repo, file.bytes).await?;
+            tree_items.push(serde_json::json!({
+                "path": file.path,
+                "mode": "100644",
+                "type": "blob",
+                "sha": blob_sha,
+            }));
+        }
+
+        let tree: Value = self
+            .http
+            .post_json(
+                &format!("{}/git/trees", repo.base_path()),
+                serde_json::json!({
+                    "base_tree": base_tree,
+                    "tree": tree_items,
+                }),
+            )
+            .await?;
+        let tree_sha = tree
+            .get("sha")
+            .and_then(|sha| sha.as_str())
+            .ok_or_else(|| bot_err("git tree sha missing".to_string()))?
+            .to_owned();
+
+        let author_email = bot_author_email();
+        let commit: Value = self
+            .http
+            .post_json(
+                &format!("{}/git/commits", repo.base_path()),
+                serde_json::json!({
+                    "message": req.message,
+                    "tree": tree_sha,
+                    "parents": [parent_sha],
+                    "author": {
+                        "name": BOT_COMMIT_NAME,
+                        "email": author_email,
+                    },
+                    "committer": {
+                        "name": BOT_COMMIT_NAME,
+                        "email": author_email,
+                    },
+                }),
+            )
+            .await?;
+        let commit_sha = commit
+            .get("sha")
+            .and_then(|sha| sha.as_str())
+            .ok_or_else(|| bot_err("git commit sha missing".to_string()))?
+            .to_owned();
+
+        self.http
+            .patch_json(
+                &format!("{}/git/refs/heads/{}", repo.base_path(), req.branch),
+                serde_json::json!({ "sha": commit_sha, "force": false }),
+            )
+            .await?;
+        Ok(commit_sha)
+    }
+
+    async fn branch_sha(&self, repo: RepoRef<'_>, branch: &str) -> Result<String> {
+        let value: Value = self
+            .http
+            .get_json(&format!("{}/git/ref/heads/{branch}", repo.base_path()))
+            .await?;
+        value
+            .pointer("/object/sha")
+            .and_then(|sha| sha.as_str())
+            .map(str::to_owned)
+            .ok_or_else(|| bot_err(format!("branch sha missing for {branch}")))
+    }
+
+    async fn commit_tree_sha(&self, repo: RepoRef<'_>, commit_sha: &str) -> Result<String> {
+        let value: Value = self
+            .http
+            .get_json(&format!("{}/git/commits/{commit_sha}", repo.base_path()))
+            .await?;
+        value
+            .pointer("/tree/sha")
+            .and_then(|sha| sha.as_str())
+            .map(str::to_owned)
+            .ok_or_else(|| bot_err("commit tree sha missing".to_string()))
+    }
+
+    async fn create_blob(&self, repo: RepoRef<'_>, bytes: &[u8]) -> Result<String> {
+        let value: Value = self
+            .http
+            .post_json(
+                &format!("{}/git/blobs", repo.base_path()),
+                serde_json::json!({
+                    "content": STANDARD.encode(bytes),
+                    "encoding": "base64",
+                }),
+            )
+            .await?;
+        value
+            .get("sha")
+            .and_then(|sha| sha.as_str())
+            .map(str::to_owned)
+            .ok_or_else(|| bot_err("blob sha missing".to_string()))
     }
 
     pub async fn open_pull_request(&self, req: OpenPullRequest<'_>) -> Result<Value> {

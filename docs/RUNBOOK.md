@@ -6,17 +6,15 @@
 
 | Path | Where | Cadence | Outcome |
 | --- | --- | --- | --- |
-| **PR quality comment** | ibex-harness `Benchmarks` on every `pull_request` | Every PR | App posts a benchmark comment on the PR. **Never** opens a data PR. |
-| **Weekly data publish** | ibex-harness `notify-benchmark-bot` → this repo `Publish benchmark data` | **Sunday 04:00 UTC** (or manual `workflow_dispatch`) | Bot opens one `chore(bench): …` PR to update `web/public/benchmarks/` on `main`. |
+| **PR quality comment** | ibex-harness `Benchmarks` on every `pull_request` | Every PR (`fast` profile) | App posts a benchmark comment on the PR. **Never** opens a data PR. |
+| **Daily data publish** | ibex-harness `notify-benchmark-bot` → this repo `Publish benchmark data` | Daily 04:00 UTC + main push collects; Sunday uses `full` profile | Bot opens a `chore(bench): …` PR with a **single Signed-off-by** commit updating `web/public/benchmarks/`. |
 
-### Weekly publish flow
+### Daily publish flow
 
-1. ibex-harness **Benchmarks** completes on `main` via **schedule** (or manual dispatch).
-2. `notify-benchmark-bot` sends `repository_dispatch` (`benchmark_main_complete`) **only** for schedule / workflow_dispatch — **not** for ordinary merges to `main`.
-3. **publish-benchmark-data** checks out `vars.BOT_RELEASE_SHA`, verifies the harness run, validates the artifact, opens (or updates) a data PR on ibex-harness.
-4. Maintainer merges the weekly data PR after harness CI is green.
-
-Pushing proxy/auth changes to `main` may still **collect** benchmarks for CI overlays, but it does **not** dispatch this bot.
+1. ibex-harness **Benchmarks** completes on `main` via **schedule**, **workflow_dispatch**, or a path-triggered **push**.
+2. `notify-benchmark-bot` sends `repository_dispatch` (`benchmark_main_complete`).
+3. **publish-benchmark-data** checks out `vars.BOT_RELEASE_SHA`, verifies the harness run, validates the artifact, and commits JSON+badge in **one** Git Data API commit (DCO trailer included).
+4. Maintainer merges the data PR after harness CI is green.
 
 ## Release pinning (`BOT_RELEASE_SHA`)
 
@@ -25,7 +23,8 @@ After each security-reviewed merge to `main`:
 1. Note the squash merge commit SHA on `main`.
 2. Set bot repo variable `BOT_RELEASE_SHA` to that SHA.
 3. Set harness variable `BENCHMARK_BOT_SHA` to the same SHA (comment renderer pin).
-4. Run a `workflow_dispatch` dry-run publish to confirm the pinned binary works.
+4. Optionally tag that SHA and run **Release binary** so harness can download `ibex-benchmark-bot-linux-amd64` instead of cargo-building on PRs.
+5. Run a `workflow_dispatch` dry-run publish to confirm the pinned binary works.
 
 Never run publish workflows against a floating branch ref.
 
