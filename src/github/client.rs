@@ -102,20 +102,6 @@ fn bot_author_email() -> String {
     format!("{app_id}+ibex-harness-benchmark[bot]@users.noreply.github.com")
 }
 
-#[cfg(test)]
-mod message_tests {
-    use super::bot_commit_message;
-
-    #[test]
-    fn commit_message_includes_signed_off_by() {
-        std::env::set_var("APP_ID", "424242");
-        let message = bot_commit_message("chore(bench): benchmark data update (run #1)");
-        assert!(message.contains("Signed-off-by: ibex-harness-benchmark[bot]"));
-        assert!(message.contains("424242+ibex-harness-benchmark[bot]@users.noreply.github.com"));
-        std::env::remove_var("APP_ID");
-    }
-}
-
 impl<'a> RepoRef<'a> {
     pub fn new(owner: &'a str, repo: &'a str) -> Self {
         Self { owner, repo }
@@ -556,4 +542,18 @@ pub fn split_repo(full_name: &str) -> Result<(&str, &str)> {
         .split_once('/')
         .ok_or_else(|| bot_err(format!("invalid repo: {full_name}")))?;
     Ok((owner, repo))
+}
+
+#[cfg(test)]
+mod message_tests {
+    use super::bot_commit_message;
+
+    #[test]
+    fn commit_message_includes_signed_off_by() {
+        std::env::set_var("APP_ID", "424242");
+        let message = bot_commit_message("chore(bench): benchmark data update (run #1)");
+        assert!(message.contains("Signed-off-by: ibex-harness-benchmark[bot]"));
+        assert!(message.contains("424242+ibex-harness-benchmark[bot]@users.noreply.github.com"));
+        std::env::remove_var("APP_ID");
+    }
 }
