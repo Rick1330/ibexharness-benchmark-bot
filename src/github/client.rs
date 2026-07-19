@@ -290,7 +290,9 @@ impl GitHubClient {
         req: CommitFilesRequest<'_>,
     ) -> Result<String> {
         if req.files.is_empty() {
-            return Err(bot_err("commit_files requires at least one file".to_string()));
+            return Err(bot_err(
+                "commit_files requires at least one file".to_string(),
+            ));
         }
         let parent_sha = self.branch_sha(repo, req.branch).await?;
         let base_tree = self.commit_tree_sha(repo, &parent_sha).await?;
