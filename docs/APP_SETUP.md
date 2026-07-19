@@ -52,9 +52,9 @@ Set repo variable `BOT_RELEASE_SHA` to a reviewed commit on `main` after each re
 ## 5. Verify
 
 1. Open any harness PR → **Benchmarks** runs → App posts a PR comment (avatar/mark). **No** data PR is opened from PR runs.
-2. On Sunday (or after harness **Benchmarks** `workflow_dispatch` on `main`) → bot **publish-benchmark-data** opens **one** weekly data PR.
+2. On the daily schedule (or after harness **Benchmarks** `workflow_dispatch` / main push collect) → bot **publish-benchmark-data** opens a data PR with a **single** Signed-off-by commit.
 3. Confirm `BENCHMARK_BOT_ENABLED=true` and pins match (`BENCHMARK_BOT_SHA` == `BOT_RELEASE_SHA`).
 
-Ordinary merges to `main` must **not** open a data PR (harness `notify-benchmark-bot` only fires on schedule / workflow_dispatch).
+Harness `notify-benchmark-bot` fires on schedule, workflow_dispatch, and successful main-branch collect runs.
 
 Key rotation: [RUNBOOK.md](RUNBOOK.md).

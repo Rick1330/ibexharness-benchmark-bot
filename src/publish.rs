@@ -6,8 +6,8 @@ use crate::artifact::{extract_artifact_zip, validate_badge_svg};
 use crate::config::{BADGE_PATH, BENCHMARK_DATA_LABEL, BENCHMARK_DATA_PATH};
 use crate::error::{bot_err, Result};
 use crate::github::{
-    split_repo, CreateBranch, GitHubClient, IssueRef, LabeledPrSearch, OpenPullRequest,
-    PutFileRequest, RepoPathRef, RepoRef,
+    bot_commit_message, split_repo, CommitFile, CommitFilesRequest, CreateBranch, GitHubClient,
+    IssueRef, LabeledPrSearch, OpenPullRequest, RepoPathRef, RepoRef,
 };
 use crate::model::{BenchmarkData, DispatchPayload};
 use crate::render::render_data_pr_body;
@@ -86,43 +86,27 @@ pub async fn publish_benchmark_data(
             .await?;
     }
 
-    let message = format!(
+    let subject = format!(
         "chore(bench): benchmark data update (run #{})",
         payload.run_number
     );
-    let json_path = RepoPathRef {
-        repo: repo_ref,
-        path: BENCHMARK_DATA_PATH,
-        git_ref: &branch,
-    };
-    let badge_path = RepoPathRef {
-        repo: repo_ref,
-        path: BADGE_PATH,
-        git_ref: &branch,
-    };
-    let json_sha = client.file_sha(json_path).await?;
-    let badge_sha = client.file_sha(badge_path).await?;
+    let message = bot_commit_message(&subject);
     client
-        .put_file(
+        .commit_files(
             repo_ref,
-            PutFileRequest {
-                path: BENCHMARK_DATA_PATH,
+            CommitFilesRequest {
                 branch: &branch,
-                bytes: &json_bytes,
                 message: &message,
-                file_sha: json_sha.as_deref(),
-            },
-        )
-        .await?;
-    client
-        .put_file(
-            repo_ref,
-            PutFileRequest {
-                path: BADGE_PATH,
-                branch: &branch,
-                bytes: &badge_bytes,
-                message: &message,
-                file_sha: badge_sha.as_deref(),
+                files: &[
+                    CommitFile {
+                        path: BENCHMARK_DATA_PATH,
+                        bytes: &json_bytes,
+                    },
+                    CommitFile {
+                        path: BADGE_PATH,
+                        bytes: &badge_bytes,
+                    },
+                ],
             },
         )
         .await?;

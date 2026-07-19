@@ -1,0 +1,55 @@
+name: Release binary
+
+# Build a linux-amd64 binary and attach it to a git tag release so harness CI
+# can download it instead of cargo-building on every PR.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing or new tag name (e.g. v0.1.2 or a pin SHA tag)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release-linux-amd64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@fa04a1451ff1842e2626ccb99004d0195b455a88 # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.8.2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Stage asset
+        run: |
+          set -euo pipefail
+          cp target/release/ibex-benchmark-bot ibex-benchmark-bot-linux-amd64
+          chmod +x ibex-benchmark-bot-linux-amd64
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "ibex-benchmark-bot $TAG" \
+              --notes "Pinned bot binary for harness BENCHMARK_BOT_SHA=${sha}." \
+              --target "$sha"
+          fi
+          gh release upload "$TAG" ibex-benchmark-bot-linux-amd64 --clobber
