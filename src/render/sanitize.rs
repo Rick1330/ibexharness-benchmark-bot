@@ -1,7 +1,10 @@
 use regex::Regex;
 
-/// HTML anchor used to find and update the bot's sticky PR comment.
+/// HTML anchor used to find and update the bot's sticky proxy PR comment.
 pub const COMMENT_MARKER: &str = "<!-- IBEX_BOT_COMMENT -->";
+
+/// Sticky PR comment marker for Memory HNSW (separate from proxy).
+pub const COMMENT_MARKER_HNSW: &str = "<!-- IBEX_BOT_COMMENT_HNSW -->";
 
 pub fn sanitize_sha(value: Option<&str>) -> String {
     let Some(value) = value else {
@@ -192,7 +195,7 @@ pub fn throughput_visual_bar(req_per_s: Option<f64>, scale: f64, width: usize) -
 pub fn status_emoji(status: &str) -> &'static str {
     match status {
         "pass" => "✅",
-        "regression" => "⚠️",
+        "warn" | "regression" => "⚠️",
         "fail" => "❌",
         _ => "❔",
     }

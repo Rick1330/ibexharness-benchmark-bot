@@ -6,8 +6,9 @@
 
 | Path | Where | Cadence | Outcome |
 | --- | --- | --- | --- |
-| **PR quality comment** | ibex-harness `Benchmarks` on every `pull_request` | Every PR (`fast` profile) | App posts a benchmark comment on the PR. **Never** opens a data PR. |
-| **Daily proxy data publish** | ibex-harness `notify-benchmark-bot` → this repo `Publish benchmark data` | Daily 04:00 UTC + main push collects; Sunday uses `full` profile | Bot opens a `chore(bench): …` PR with a **single Signed-off-by** commit updating `benchmark-data.json` + `badge.svg`. |
+| **Proxy PR quality comment** | ibex-harness `Benchmarks` on `pull_request` | Every matching PR (**smoke** profile) | App posts sticky `IBEX_BOT_COMMENT`. **Never** opens a data PR. |
+| **Memory HNSW PR comment** | ibex-harness `Memory Benchmarks` on `pull_request` | Every matching PR (**smoke** = 10K) | App posts sticky `IBEX_BOT_COMMENT_HNSW` via `post-hnsw-pr-comment`. **Never** opens a data PR. |
+| **Daily proxy data publish** | ibex-harness `notify-benchmark-bot` → this repo `Publish benchmark data` | Daily 04:00 UTC + main push collects; Sunday uses `full` profile | Bot opens a `chore(bench): …` PR updating `benchmark-data.json` + `badge.svg`. |
 | **HNSW data publish** | ibex-harness `Memory Benchmarks` → this repo `Publish HNSW benchmark data` | Sunday 05:00 UTC + main push / dispatch | Bot opens a data PR updating **only** `hnsw-benchmark-data.json` (never proxy files). |
 
 ### Daily publish flow (proxy)
@@ -132,7 +133,8 @@ Use GitHub email notifications for workflow failures.
 
 After enabling the bot:
 
-1. Confirm every harness PR receives a benchmark quality comment (no data PR).
-2. Confirm Sunday cron (or one manual main `workflow_dispatch`) produces **one** bot data PR.
-3. Confirm docs site history page shows new runs after that PR merges.
-4. Confirm PR comments use the pinned Rust renderer (rich format).
+1. Confirm every matching harness PR receives a **proxy** quality comment (no data PR).
+2. Confirm Memory Benchmarks PRs receive a separate **HNSW** sticky comment (`IBEX_BOT_COMMENT_HNSW`).
+3. Confirm Sunday cron (or one manual main `workflow_dispatch`) produces **one** bot data PR per suite that ran.
+4. Confirm `/benchmarks` and `/benchmarks/memory` show new runs after those PRs merge.
+5. Confirm PR comments use the pinned Rust renderer (rich format).

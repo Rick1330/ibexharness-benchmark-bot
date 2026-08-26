@@ -90,7 +90,7 @@ pub struct HnswBenchmarkData {
     pub runs: Option<Vec<HnswBenchmarkRun>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct HnswBenchmarkRun {
     pub sha: Option<String>,
     pub short_sha: Option<String>,
@@ -101,6 +101,8 @@ pub struct HnswBenchmarkRun {
     pub methodology: Option<Value>,
     pub mean_recall_at_10: Option<f64>,
     pub results: Option<Vec<HnswSizeResult>>,
+    pub status: Option<String>,
+    pub gate_summary: Option<Value>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]

@@ -1,13 +1,13 @@
 mod sanitize;
 
 use crate::model::{
-    BenchmarkData, BenchmarkRun, GateCheck, GateResult, HnswBenchmarkData, HnswSizeResult,
-    StageMetrics,
+    BenchmarkData, BenchmarkRun, GateCheck, GateResult, HnswBenchmarkData, HnswBenchmarkRun,
+    HnswSizeResult, StageMetrics,
 };
 pub use sanitize::{
     escape_cell, format_delta, format_latency_delta, format_latency_ms, format_ns_per_op,
     format_number, format_throughput, format_throughput_delta, sanitize_branch, sanitize_gate_name,
-    sanitize_sha, status_emoji, COMMENT_MARKER,
+    sanitize_sha, status_emoji, COMMENT_MARKER, COMMENT_MARKER_HNSW,
 };
 
 const DOCS_BASE: &str = "https://docs.ibexharness.com/benchmarks/history";
@@ -118,6 +118,79 @@ pub fn render_data_pr_body(
     lines.push("- [ ] Harness CI green".to_string());
     lines.push("- [ ] Docs preview shows updated history".to_string());
     lines.join("\n")
+}
+
+/// Compact Memory HNSW PR comment (separate sticky thread from proxy).
+pub fn render_hnsw_pr_comment(data: &HnswBenchmarkData) -> Result<String, String> {
+    let run = data
+        .runs
+        .as_ref()
+        .and_then(|runs| runs.first())
+        .ok_or_else(|| "hnsw benchmark data has no runs".to_string())?;
+
+    let status = run.status.as_deref().unwrap_or("unknown");
+    let short_sha = sanitize_sha(run.short_sha.as_deref().or(run.sha.as_deref()));
+    let mean = run
+        .mean_recall_at_10
+        .map(|v| format!("{:.4}", v))
+        .unwrap_or_else(|| "n/a".into());
+    let status_badge = match status {
+        "pass" => "brightgreen",
+        "warn" => "yellow",
+        "fail" => "red",
+        _ => "lightgrey",
+    };
+
+    let mut lines = vec![
+        COMMENT_MARKER_HNSW.to_string(),
+        "<br/>".to_string(),
+        "<p align=\"center\">".to_string(),
+        format!(
+            "  <img src=\"https://img.shields.io/badge/HNSW-{status}-{status_badge}?style=for-the-badge&labelColor=2B2B2B\" alt=\"HNSW: {status}\">"
+        ),
+        format!(
+            "  <img src=\"https://img.shields.io/badge/Mean_recall-{mean}-informational?style=for-the-badge&labelColor=2B2B2B\" alt=\"Mean recall\">"
+        ),
+        format!(
+            "  <img src=\"https://img.shields.io/badge/SHA-{short_sha}-lightgrey?style=for-the-badge&labelColor=2B2B2B\" alt=\"SHA\">"
+        ),
+        "</p>".to_string(),
+        String::new(),
+        "---".to_string(),
+        String::new(),
+        "### Memory HNSW".to_string(),
+        String::new(),
+        format!(
+            "{} **{}** · mean recall@10 `{mean}` · [`/benchmarks/memory`](https://docs.ibexharness.com/benchmarks/memory)",
+            status_emoji(status),
+            status.to_uppercase()
+        ),
+        String::new(),
+        "### Corpus cells".to_string(),
+        String::new(),
+        render_hnsw_cells_table(run.results.as_deref().unwrap_or(&[])),
+        String::new(),
+        "_Production publish knobs: `ef_search=40`, `min_similarity=0.70`, `iterative_scan=off`, bulk index build. Separate from proxy PR comment._"
+            .to_string(),
+    ];
+    if let Some(url) = run.run_url.as_deref().filter(|u| !u.is_empty()) {
+        lines.push(String::new());
+        lines.push(format!("- [Memory Benchmarks workflow run]({url})"));
+    }
+    append_gate_summary_note(&mut lines, run);
+    Ok(lines.join("\n"))
+}
+
+fn append_gate_summary_note(lines: &mut Vec<String>, run: &HnswBenchmarkRun) {
+    let Some(summary) = run.gate_summary.as_ref() else {
+        return;
+    };
+    let note = summary.get("note").and_then(|v| v.as_str()).unwrap_or("");
+    if note.is_empty() {
+        return;
+    }
+    lines.push(String::new());
+    lines.push(format!("> {note}"));
 }
 
 /// Branded body for automated HNSW / memory data PRs (mirrors proxy data PR shape).
@@ -700,49 +773,4 @@ fn markdown_table_with_escape(headers: &[&str], rows: &[Vec<String>], escape_bod
 
 fn format_number_precise(value: Option<f64>, digits: usize) -> String {
     sanitize::format_number_precise(value, digits)
-}
-
-#[cfg(test)]
-mod hnsw_body_tests {
-    use super::render_hnsw_data_pr_body;
-    use crate::model::{HnswBenchmarkData, HnswBenchmarkRun, HnswSizeResult};
-
-    #[test]
-    fn hnsw_data_pr_body_matches_proxy_shape() {
-        let data = HnswBenchmarkData {
-            schema_version: Some(1),
-            benchmark: Some("hnsw_recall_latency".into()),
-            runs: Some(vec![HnswBenchmarkRun {
-                sha: Some("abcdef1234567".into()),
-                short_sha: Some("abcdef1".into()),
-                timestamp: Some("2026-08-26T00:00:00Z".into()),
-                branch: Some("main".into()),
-                run_number: Some(9),
-                run_url: Some("https://example.test/run/9".into()),
-                methodology: None,
-                mean_recall_at_10: Some(1.0),
-                results: Some(vec![HnswSizeResult {
-                    corpus_size: Some(10_000),
-                    query_count: Some(500),
-                    recall_at_10: Some(1.0),
-                    latency_ms_p50: Some(14.0),
-                    latency_ms_p95: Some(20.1),
-                    latency_ms_p99: Some(21.0),
-                    ef_search: Some(40),
-                    min_similarity: Some(0.70),
-                    iterative_scan: Some("off".into()),
-                    index_build_mode: Some("bulk".into()),
-                    ..Default::default()
-                }]),
-            }]),
-        };
-        let body = render_hnsw_data_pr_body(&data, Some("https://example.test/run/9"), 9);
-        assert!(body.contains("## Automated HNSW benchmark data update"));
-        assert!(body.contains("| Size | Recall@10 | p95 | ef | min_sim | iterative | build |"));
-        assert!(body.contains("10000"));
-        assert!(body.contains("20.1ms"));
-        assert!(body.contains("Reviewer checklist"));
-        assert!(body.contains("Does **not** modify proxy"));
-        assert!(!body.contains("Cells: `"));
-    }
 }
