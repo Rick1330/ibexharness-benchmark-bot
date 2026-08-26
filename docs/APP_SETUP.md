@@ -29,7 +29,8 @@ gh api /users/Rick1330/installations --jq '.installations[] | select(.app_slug==
 | `APP_PRIVATE_KEY` | PEM private key |
 | `INSTALLATION_ID` | Installation ID |
 
-Set repo variable `BOT_RELEASE_SHA` to a reviewed commit on `main` after each release.
+Set repo variable `BOT_RELEASE_SHA` to a reviewed squash commit on `main` after each
+**green** merge (never pin a commit whose CI failed).
 
 ## 4. Harness repo secrets and variables
 
@@ -48,13 +49,19 @@ Set repo variable `BOT_RELEASE_SHA` to a reviewed commit on `main` after each re
 | --- | --- |
 | `BENCHMARK_BOT_ENABLED` | `true` |
 | `BENCHMARK_BOT_SHA` | Same pinned commit as `BOT_RELEASE_SHA` |
+| `BENCHMARK_BOT_RELEASE_TAG` | `bot-<7-char-sha>` matching that pin (after **Release binary** uploads the asset) |
+
+Harness `.github/actions/setup-benchmark-bot` ignores a release tag that does not match
+the pin short SHA, and can require a subcommand (e.g. `post-hnsw-pr-comment`) so a
+stale binary cannot silently break Memory Benchmarks collect.
 
 ## 5. Verify
 
-1. Open any harness PR → **Benchmarks** runs → App posts a PR comment (avatar/mark). **No** data PR is opened from PR runs.
-2. On the daily schedule (or after harness **Benchmarks** `workflow_dispatch` / main push collect) → bot **publish-benchmark-data** opens a data PR with a **single** Signed-off-by commit.
-3. Confirm `BENCHMARK_BOT_ENABLED=true` and pins match (`BENCHMARK_BOT_SHA` == `BOT_RELEASE_SHA`).
+1. Open any harness PR → **Benchmarks** posts a **Proxy** sticky comment (`IBEX_BOT_COMMENT`). **No** data PR.
+2. When **Memory Benchmarks** runs on the PR → App posts a separate **Memory HNSW** sticky comment (`IBEX_BOT_COMMENT_HNSW`) via `post-hnsw-pr-comment`. **No** HNSW data PR from PR runs.
+3. On schedule / main collect → bot publish workflows open one data PR per suite.
+4. Confirm `BENCHMARK_BOT_ENABLED=true`, `BENCHMARK_BOT_SHA` == `BOT_RELEASE_SHA`, and `BENCHMARK_BOT_RELEASE_TAG` matches `bot-${SHA:0:7}` with a downloadable linux-amd64 asset.
 
-Harness `notify-benchmark-bot` fires on schedule, workflow_dispatch, and successful main-branch collect runs.
+Harness `notify-benchmark-bot` / `notify-hnsw-benchmark-bot` fire on successful main-branch collects (plus schedule / dispatch per workflow).
 
 Key rotation: [RUNBOOK.md](RUNBOOK.md).

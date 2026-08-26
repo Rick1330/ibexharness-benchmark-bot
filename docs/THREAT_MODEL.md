@@ -83,6 +83,8 @@ Trusted:   Actions API run record, validated artifact JSON, App committer identi
 - [ ] No secrets in logs or workflow outputs
 - [ ] `persist-credentials: false` on untrusted checkouts
 - [ ] Action pins are full 40-char SHAs
-- [ ] `BOT_RELEASE_SHA` and harness `BENCHMARK_BOT_SHA` updated deliberately
+- [ ] Merge landed via PR with green `validate` (no direct `main` pushes)
+- [ ] `BOT_RELEASE_SHA`, harness `BENCHMARK_BOT_SHA`, and `BENCHMARK_BOT_RELEASE_TAG` updated together
+- [ ] Release asset includes required subcommands (`post-pr-comment`, `post-hnsw-pr-comment`)
 - [ ] `cargo audit` clean in CI
 - [ ] Security unit tests pass (`verify`, `validate`, `sanitize`, `artifact`)

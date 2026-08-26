@@ -166,9 +166,7 @@ pub fn render_hnsw_pr_comment(data: &HnswBenchmarkData) -> Result<String, String
         render_compact_brand(),
         String::new(),
         "<p align=\"center\">".to_string(),
-        format!(
-            "  <img src=\"https://img.shields.io/badge/Suite-Memory_HNSW-blue?style=for-the-badge&labelColor=2B2B2B\" alt=\"Suite: Memory HNSW\">"
-        ),
+        "  <img src=\"https://img.shields.io/badge/Suite-Memory_HNSW-blue?style=for-the-badge&labelColor=2B2B2B\" alt=\"Suite: Memory HNSW\">".to_string(),
         format!(
             "  <img src=\"https://img.shields.io/badge/Status-{status}-{status_badge}?style=for-the-badge&labelColor=2B2B2B\" alt=\"Status: {status}\">"
         ),

@@ -6,10 +6,12 @@
 
 | Path | Where | Cadence | Outcome |
 | --- | --- | --- | --- |
-| **Proxy PR quality comment** | ibex-harness `Benchmarks` on `pull_request` | Every matching PR (**smoke** profile) | App posts sticky `IBEX_BOT_COMMENT`. **Never** opens a data PR. |
-| **Memory HNSW PR comment** | ibex-harness `Memory Benchmarks` on `pull_request` | Every matching PR (**smoke** = 10K) | App posts sticky `IBEX_BOT_COMMENT_HNSW` via `post-hnsw-pr-comment`. **Never** opens a data PR. |
+| **Proxy PR quality comment** | ibex-harness `Benchmarks` on `pull_request` | Every matching PR (**smoke** profile) | App posts sticky **Proxy suite** comment (`IBEX_BOT_COMMENT`). **Never** opens a data PR. |
+| **Memory HNSW PR comment** | ibex-harness `Memory Benchmarks` on `pull_request` | Every matching PR (**smoke** = 10K) | App posts sticky **Memory HNSW suite** comment (`IBEX_BOT_COMMENT_HNSW`) via `post-hnsw-pr-comment` (status, corpus table, gate summary, site links). **Never** opens a data PR. |
 | **Daily proxy data publish** | ibex-harness `notify-benchmark-bot` → this repo `Publish benchmark data` | Daily 04:00 UTC + main push collects; Sunday uses `full` profile | Bot opens a `chore(bench): …` PR updating `benchmark-data.json` + `badge.svg`. |
 | **HNSW data publish** | ibex-harness `Memory Benchmarks` → this repo `Publish HNSW benchmark data` | Sunday 05:00 UTC + main push / dispatch | Bot opens a data PR updating **only** `hnsw-benchmark-data.json` (never proxy files). |
+
+Suite comments are independent sticky threads. Do not reuse markers across suites.
 
 ### Daily publish flow (proxy)
 
@@ -26,18 +28,26 @@
 4. Result cells may include methodology knobs (`ef_search`, `min_similarity`, `iterative_scan`, `index_build_mode`, plan/buffer stats). Validation requires core latency/recall fields; optional knobs are range-checked when present.
 5. Maintainer merges; pin `BOT_RELEASE_SHA` / harness `BENCHMARK_BOT_SHA` together after bot code merges.
 
-## Release pinning (`BOT_RELEASE_SHA`)
+## Contribution / merge policy
 
-After each security-reviewed merge to `main`:
+- Every change lands via PR using `.github/pull_request_template.md`.
+- Do **not** push commits directly to `main`.
+- Do **not** merge while `validate` (fmt / clippy / audit / test) is red.
+- Prefer squash-merge; pin the resulting `main` commit SHA (not the PR head).
+
+## Release pinning (`BOT_RELEASE_SHA` + harness tag)
+
+After each security-reviewed, **green** merge to `main`:
 
 1. Note the squash merge commit SHA on `main`.
 2. Set bot repo variable `BOT_RELEASE_SHA` to that SHA.
-3. Set harness variable `BENCHMARK_BOT_SHA` to the same SHA (comment renderer pin).
-4. Optionally tag that SHA and run **Release binary** so harness can download `ibex-benchmark-bot-linux-amd64` instead of cargo-building on PRs.
-5. Run a `workflow_dispatch` dry-run publish to confirm the pinned binary works.
+3. Set harness variable `BENCHMARK_BOT_SHA` to the same SHA (comment / publish pin).
+4. Tag that SHA as `bot-<7-char-sha>` and run **Release binary** (`workflow_dispatch` with that tag) so `ibex-benchmark-bot-linux-amd64` is attached.
+5. Set harness variable `BENCHMARK_BOT_RELEASE_TAG` to the same `bot-<7-char-sha>` (setup action rejects tags that do not match the pin short SHA).
+6. Confirm Memory collect can resolve `post-hnsw-pr-comment` from the release (or cargo-build fallback).
+7. Optional: `workflow_dispatch` dry-run publish to confirm the pinned binary works.
 
-Never run publish workflows against a floating branch ref.
-
+Never run publish workflows against a floating branch ref. Never leave `BENCHMARK_BOT_RELEASE_TAG` pointing at an older bot that lacks required subcommands.
 ## Manual re-publish
 
 When a publish failed but the harness benchmark run succeeded:

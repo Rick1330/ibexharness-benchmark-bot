@@ -226,6 +226,11 @@ mod tests {
         let mut data = data;
         if let Some(run) = data.runs.as_mut().and_then(|runs| runs.first_mut()) {
             run.status = Some("warn".into());
+            run.gate_summary = Some(serde_json::json!({
+                "recall_ok": true,
+                "has_1m": false,
+                "note": "1M cell absent (expected on smoke/fast profiles)"
+            }));
         }
         let body = crate::render::render_hnsw_pr_comment(&data).expect("render");
         assert!(body.contains("<!-- IBEX_BOT_COMMENT_HNSW -->"));
