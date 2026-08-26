@@ -18,11 +18,12 @@ fn render_pr_comment_uses_triage_layout() {
     let body = render_pr_comment(&data, &gate).expect("render");
     assert!(body.contains(COMMENT_MARKER));
     assert!(body.contains("Suite: Proxy") || body.contains("Suite-Proxy"));
-    assert!(body.contains("Proxy suite"));
-    assert!(body.contains("performance summary"));
+    assert!(body.contains("### Performance summary"));
+    assert!(body.contains("### Auth & proxy stages (synthetic)"));
     assert!(body.contains("img.shields.io"));
     assert!(body.contains("k6 p99 SLA"));
     assert!(body.contains("Auth LRU"));
+    assert!(body.contains("Auth gRPC"));
     assert!(!body.contains("```mermaid"));
     assert!(body.contains("<details>"));
     assert!(body.contains("](https://github.com/Rick1330/ibex-harness/commit/"));
@@ -51,7 +52,7 @@ fn render_pr_comment_formats_sub_ms_stages() {
         });
     }
     let body = render_pr_comment(&data, &gate).expect("render");
-    assert!(body.contains("Stage breakdown"));
+    assert!(body.contains("Auth & proxy stages"));
     assert!(body.contains("376 ns") || body.contains("0.38 µs"));
     assert!(body.contains("Data model"));
 }
@@ -78,6 +79,6 @@ fn render_pr_comment_hides_zero_stage_rows() {
         });
     }
     let body = render_pr_comment(&data, &gate).expect("render");
-    assert!(!body.contains("### Stage breakdown (synthetic)"));
+    assert!(!body.contains("### Auth & proxy stages (synthetic)"));
     assert!(!body.contains("| Auth LRU |"));
 }

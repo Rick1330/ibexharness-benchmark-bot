@@ -225,7 +225,7 @@ mod tests {
         }]));
         let mut data = data;
         if let Some(run) = data.runs.as_mut().and_then(|runs| runs.first_mut()) {
-            run.status = Some("warn".into());
+            run.status = Some("pass".into());
             run.gate_summary = Some(serde_json::json!({
                 "recall_ok": true,
                 "has_1m": false,
@@ -236,9 +236,11 @@ mod tests {
         assert!(body.contains("<!-- IBEX_BOT_COMMENT_HNSW -->"));
         assert!(body.contains("### Memory HNSW suite"));
         assert!(body.contains("Memory HNSW"));
-        assert!(body.contains("WARN"));
+        assert!(body.contains("PASS"));
+        assert!(body.contains("1M-deferred") || body.contains("1M deferred"));
+        assert!(!body.contains("**WARN**"));
         assert!(body.contains("/benchmarks/memory"));
-        assert!(body.contains("### Gate summary"));
+        assert!(body.contains("### Coverage"));
     }
 
     #[test]
