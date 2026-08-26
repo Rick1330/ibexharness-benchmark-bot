@@ -82,3 +82,34 @@ pub struct WorkflowRun {
     pub path: Option<String>,
     pub html_url: Option<String>,
 }
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct HnswBenchmarkData {
+    pub schema_version: Option<i64>,
+    pub benchmark: Option<String>,
+    pub runs: Option<Vec<HnswBenchmarkRun>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct HnswBenchmarkRun {
+    pub sha: Option<String>,
+    pub short_sha: Option<String>,
+    pub timestamp: Option<String>,
+    pub branch: Option<String>,
+    pub run_number: Option<i64>,
+    pub run_url: Option<String>,
+    pub methodology: Option<Value>,
+    pub mean_recall_at_10: Option<f64>,
+    pub results: Option<Vec<HnswSizeResult>>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct HnswSizeResult {
+    pub corpus_size: Option<i64>,
+    pub query_count: Option<i64>,
+    pub recall_at_10: Option<f64>,
+    pub latency_ms_p50: Option<f64>,
+    pub latency_ms_p95: Option<f64>,
+    pub latency_ms_p99: Option<f64>,
+    pub ef_search: Option<i64>,
+}

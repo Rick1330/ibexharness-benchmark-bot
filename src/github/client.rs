@@ -142,6 +142,25 @@ impl GitHubClient {
     }
 
     pub async fn download_artifact_zip(&self, repo: RepoRef<'_>, run_id: i64) -> Result<Vec<u8>> {
+        self.download_named_artifact_zip(repo, run_id, "benchmark-data")
+            .await
+    }
+
+    pub async fn download_hnsw_artifact_zip(
+        &self,
+        repo: RepoRef<'_>,
+        run_id: i64,
+    ) -> Result<Vec<u8>> {
+        self.download_named_artifact_zip(repo, run_id, "hnsw-benchmark-data")
+            .await
+    }
+
+    async fn download_named_artifact_zip(
+        &self,
+        repo: RepoRef<'_>,
+        run_id: i64,
+        artifact_name: &str,
+    ) -> Result<Vec<u8>> {
         let artifacts: Value = self
             .http
             .get_json(&format!(
@@ -149,7 +168,7 @@ impl GitHubClient {
                 repo.base_path()
             ))
             .await?;
-        let artifact_id = find_benchmark_artifact_id(&artifacts)?;
+        let artifact_id = find_named_artifact_id(&artifacts, artifact_name)?;
         let path = format!("{}/actions/artifacts/{artifact_id}/zip", repo.base_path());
         let response = self
             .http
@@ -522,19 +541,19 @@ fn contents_path(repo: &RepoRef<'_>, path: &str, git_ref: &str) -> String {
     format!("{}/contents/{path}?ref={git_ref}", repo.base_path())
 }
 
-fn find_benchmark_artifact_id(artifacts: &Value) -> Result<i64> {
+fn find_named_artifact_id(artifacts: &Value, name: &str) -> Result<i64> {
     let items = artifacts
         .get("artifacts")
         .and_then(|value| value.as_array())
         .ok_or_else(|| bot_err("artifacts list missing".to_string()))?;
     let artifact = items
         .iter()
-        .find(|item| item.get("name").and_then(|v| v.as_str()) == Some("benchmark-data"))
-        .ok_or_else(|| bot_err("benchmark-data artifact not found".to_string()))?;
+        .find(|item| item.get("name").and_then(|v| v.as_str()) == Some(name))
+        .ok_or_else(|| bot_err(format!("{name} artifact not found")))?;
     artifact
         .get("id")
         .and_then(|value| value.as_i64())
-        .ok_or_else(|| bot_err("artifact id missing".to_string()))
+        .ok_or_else(|| bot_err(format!("{name} artifact id missing")))
 }
 
 pub fn split_repo(full_name: &str) -> Result<(&str, &str)> {
