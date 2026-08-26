@@ -17,9 +17,9 @@ fn render_pr_comment_uses_triage_layout() {
     .unwrap();
     let body = render_pr_comment(&data, &gate).expect("render");
     assert!(body.contains(COMMENT_MARKER));
-    assert!(!body.contains("align=\"left\""));
-    assert!(!body.contains("width=\"32\""));
-    assert!(body.contains("Performance summary"));
+    assert!(body.contains("Suite: Proxy") || body.contains("Suite-Proxy"));
+    assert!(body.contains("Proxy suite"));
+    assert!(body.contains("performance summary"));
     assert!(body.contains("img.shields.io"));
     assert!(body.contains("k6 p99 SLA"));
     assert!(body.contains("Auth LRU"));
