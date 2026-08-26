@@ -16,6 +16,7 @@ use crate::hnsw_validate::{
     validate_hnsw_file,
 };
 use crate::model::{DispatchPayload, HnswBenchmarkData};
+use crate::render::render_hnsw_data_pr_body;
 use crate::verify;
 
 pub struct PublishResult {
@@ -102,7 +103,8 @@ pub async fn publish_hnsw_benchmark_data(
         )
         .await?;
 
-    let body = render_hnsw_pr_body(&benchmark_data, run.html_url.as_deref(), payload.run_number);
+    let body =
+        render_hnsw_data_pr_body(&benchmark_data, run.html_url.as_deref(), payload.run_number);
     let title = subject;
     let pr = client
         .open_pull_request(OpenPullRequest {
@@ -132,63 +134,6 @@ pub async fn publish_hnsw_benchmark_data(
             .map(str::to_owned),
         branch,
     })
-}
-
-fn render_hnsw_pr_body(data: &HnswBenchmarkData, run_url: Option<&str>, run_number: i64) -> String {
-    let latest = data.runs.as_ref().and_then(|runs| runs.first());
-    let mean = latest
-        .and_then(|run| run.mean_recall_at_10)
-        .map(|v| format!("{:.4}", v))
-        .unwrap_or_else(|| "n/a".into());
-    let cells = latest
-        .and_then(|run| run.results.as_ref())
-        .map(|results| {
-            results
-                .iter()
-                .map(|r| {
-                    let size = r
-                        .corpus_size
-                        .map(|n| n.to_string())
-                        .unwrap_or_else(|| "?".into());
-                    let p95 = r
-                        .latency_ms_p95
-                        .map(|v| format!("{v:.1}"))
-                        .unwrap_or_else(|| "n/a".into());
-                    let ef = r
-                        .ef_search
-                        .map(|v| v.to_string())
-                        .unwrap_or_else(|| "?".into());
-                    let min_sim = r
-                        .min_similarity
-                        .map(|v| format!("{v:.2}"))
-                        .unwrap_or_else(|| "n/a".into());
-                    let iter = r
-                        .iterative_scan
-                        .clone()
-                        .unwrap_or_else(|| "n/a".into());
-                    let build = r
-                        .index_build_mode
-                        .clone()
-                        .unwrap_or_else(|| "n/a".into());
-                    format!(
-                        "`{size}` p95={p95}ms ef={ef} min_sim={min_sim} iter={iter} build={build}"
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("; ")
-        })
-        .unwrap_or_else(|| "n/a".into());
-    let run_link = run_url.unwrap_or("(missing)");
-    format!(
-        "Automated HNSW / memory benchmark data publish.\n\n\
-         - Workflow run: [{run_number}]({run_link})\n\
-         - Mean recall@10: `{mean}`\n\
-         - Cells: {cells}\n\
-         - Path: `{HNSW_BENCHMARK_DATA_PATH}`\n\n\
-         Does **not** modify proxy `benchmark-data.json`.\n\
-         Published cells should use production-like knobs (`ef_search=40`, \
-         `min_similarity≈0.70`, `iterative_scan=off`, bulk index build).\n"
-    )
 }
 
 async fn ensure_not_replay(

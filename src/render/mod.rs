@@ -1,6 +1,9 @@
 mod sanitize;
 
-use crate::model::{BenchmarkData, BenchmarkRun, GateCheck, GateResult, StageMetrics};
+use crate::model::{
+    BenchmarkData, BenchmarkRun, GateCheck, GateResult, HnswBenchmarkData, HnswSizeResult,
+    StageMetrics,
+};
 pub use sanitize::{
     escape_cell, format_delta, format_latency_delta, format_latency_ms, format_ns_per_op,
     format_number, format_throughput, format_throughput_delta, sanitize_branch, sanitize_gate_name,
@@ -115,6 +118,104 @@ pub fn render_data_pr_body(
     lines.push("- [ ] Harness CI green".to_string());
     lines.push("- [ ] Docs preview shows updated history".to_string());
     lines.join("\n")
+}
+
+/// Branded body for automated HNSW / memory data PRs (mirrors proxy data PR shape).
+pub fn render_hnsw_data_pr_body(
+    data: &HnswBenchmarkData,
+    run_url: Option<&str>,
+    run_number: i64,
+) -> String {
+    let latest = data.runs.as_ref().and_then(|runs| runs.first());
+    let short_sha = latest
+        .and_then(|run| run.short_sha.as_deref().or(run.sha.as_deref()))
+        .map(|sha| sanitize_sha(Some(sha)))
+        .unwrap_or_else(|| sanitize_sha(None));
+    let mean = latest
+        .and_then(|run| run.mean_recall_at_10)
+        .map(|v| format!("`{v:.4}`"))
+        .unwrap_or_else(|| "`n/a`".into());
+
+    let mut lines = vec![
+        render_compact_brand(),
+        String::new(),
+        "## Automated HNSW benchmark data update".to_string(),
+        String::new(),
+        markdown_table(
+            &["Field", "Value"],
+            &[
+                vec!["Run number".to_string(), run_number.to_string()],
+                vec!["Head SHA".to_string(), short_sha],
+                vec!["Mean recall@10".to_string(), mean],
+                vec![
+                    "Path".to_string(),
+                    format!("`{}`", crate::config::HNSW_BENCHMARK_DATA_PATH),
+                ],
+            ],
+        ),
+        String::new(),
+        "### Corpus cells".to_string(),
+        String::new(),
+        render_hnsw_cells_table(latest.and_then(|run| run.results.as_deref()).unwrap_or(&[])),
+        String::new(),
+        "_Does **not** modify proxy `benchmark-data.json`. Published cells should use \
+         production-like knobs (`ef_search=40`, `min_similarity≈0.70`, `iterative_scan=off`, \
+         bulk index build)._"
+            .to_string(),
+    ];
+    if let Some(url) = run_url {
+        lines.push(String::new());
+        lines.push(format!("- [Harness Memory Benchmarks workflow run]({url})"));
+    }
+    lines.push(String::new());
+    lines.push("### Reviewer checklist".to_string());
+    lines.push(String::new());
+    lines.push("- [ ] HNSW validation passed in bot workflow".to_string());
+    lines.push("- [ ] Harness Memory Benchmarks CI green".to_string());
+    lines.push("- [ ] `/benchmarks/memory` preview shows updated history".to_string());
+    lines.join("\n")
+}
+
+fn render_hnsw_cells_table(results: &[HnswSizeResult]) -> String {
+    if results.is_empty() {
+        return "_No result cells in latest run._".to_string();
+    }
+    let rows: Vec<Vec<String>> = results
+        .iter()
+        .map(|r| {
+            vec![
+                r.corpus_size
+                    .map(|n| n.to_string())
+                    .unwrap_or_else(|| "—".into()),
+                r.recall_at_10
+                    .map(|v| format!("{v:.4}"))
+                    .unwrap_or_else(|| "—".into()),
+                r.latency_ms_p95
+                    .map(|v| format!("{v:.1}ms"))
+                    .unwrap_or_else(|| "—".into()),
+                r.ef_search
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "—".into()),
+                r.min_similarity
+                    .map(|v| format!("{v:.2}"))
+                    .unwrap_or_else(|| "—".into()),
+                r.iterative_scan.clone().unwrap_or_else(|| "—".into()),
+                r.index_build_mode.clone().unwrap_or_else(|| "—".into()),
+            ]
+        })
+        .collect();
+    markdown_table(
+        &[
+            "Size",
+            "Recall@10",
+            "p95",
+            "ef",
+            "min_sim",
+            "iterative",
+            "build",
+        ],
+        &rows,
+    )
 }
 
 fn render_compact_brand() -> String {
@@ -599,4 +700,49 @@ fn markdown_table_with_escape(headers: &[&str], rows: &[Vec<String>], escape_bod
 
 fn format_number_precise(value: Option<f64>, digits: usize) -> String {
     sanitize::format_number_precise(value, digits)
+}
+
+#[cfg(test)]
+mod hnsw_body_tests {
+    use super::render_hnsw_data_pr_body;
+    use crate::model::{HnswBenchmarkData, HnswBenchmarkRun, HnswSizeResult};
+
+    #[test]
+    fn hnsw_data_pr_body_matches_proxy_shape() {
+        let data = HnswBenchmarkData {
+            schema_version: Some(1),
+            benchmark: Some("hnsw_recall_latency".into()),
+            runs: Some(vec![HnswBenchmarkRun {
+                sha: Some("abcdef1234567".into()),
+                short_sha: Some("abcdef1".into()),
+                timestamp: Some("2026-08-26T00:00:00Z".into()),
+                branch: Some("main".into()),
+                run_number: Some(9),
+                run_url: Some("https://example.test/run/9".into()),
+                methodology: None,
+                mean_recall_at_10: Some(1.0),
+                results: Some(vec![HnswSizeResult {
+                    corpus_size: Some(10_000),
+                    query_count: Some(500),
+                    recall_at_10: Some(1.0),
+                    latency_ms_p50: Some(14.0),
+                    latency_ms_p95: Some(20.1),
+                    latency_ms_p99: Some(21.0),
+                    ef_search: Some(40),
+                    min_similarity: Some(0.70),
+                    iterative_scan: Some("off".into()),
+                    index_build_mode: Some("bulk".into()),
+                    ..Default::default()
+                }]),
+            }]),
+        };
+        let body = render_hnsw_data_pr_body(&data, Some("https://example.test/run/9"), 9);
+        assert!(body.contains("## Automated HNSW benchmark data update"));
+        assert!(body.contains("| Size | Recall@10 | p95 | ef | min_sim | iterative | build |"));
+        assert!(body.contains("10000"));
+        assert!(body.contains("20.1ms"));
+        assert!(body.contains("Reviewer checklist"));
+        assert!(body.contains("Does **not** modify proxy"));
+        assert!(!body.contains("Cells: `"));
+    }
 }
