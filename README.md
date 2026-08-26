@@ -19,7 +19,7 @@ GitHub App (Rust) · publishes benchmark data to <a href="https://github.com/Ric
 | `publish-hnsw` | Validate HNSW artifact and open data PR (`hnsw-benchmark-data.json` only) |
 | `post-pr-comment` | Post sticky **Proxy** suite comment (`IBEX_BOT_COMMENT`) |
 | `render-pr-comment` | Render Proxy comment to stdout |
-| `post-hnsw-pr-comment` | Post sticky **Memory HNSW** suite comment (`IBEX_BOT_COMMENT_HNSW`) |
+| `post-hnsw-pr-comment` | Post sticky **Memory HNSW** suite comment (`IBEX_BOT_COMMENT_HNSW`; 1M deferred ≠ WARN on smoke/fast) |
 | `render-hnsw-pr-comment` | Render Memory HNSW comment to stdout |
 
 [Setup](docs/APP_SETUP.md) · [Runbook](docs/RUNBOOK.md) · [Threat model](docs/THREAT_MODEL.md)

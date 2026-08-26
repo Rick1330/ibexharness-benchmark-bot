@@ -33,34 +33,39 @@ pub fn render_pr_comment(data: &BenchmarkData, gate: &GateResult) -> Result<Stri
     let status = run.status.as_deref().unwrap_or("unknown");
     let baseline_sha = data.baseline_sha.as_deref();
 
-    let sections = vec![
+    let mut sections = vec![
         COMMENT_MARKER.to_string(),
-        render_compact_brand(),
-        String::new(),
-        "<p align=\"center\">".to_string(),
-        "  <img src=\"https://img.shields.io/badge/Suite-Proxy-blue?style=for-the-badge&labelColor=2B2B2B\" alt=\"Suite: Proxy\">".to_string(),
-        "</p>".to_string(),
-        String::new(),
-        render_verdict_banner(status, gate, run),
+        render_proxy_badge_row(status, gate, run),
         String::new(),
         "---".to_string(),
         String::new(),
-        "### 🏎️ Proxy suite — performance summary".to_string(),
+        "### Performance summary".to_string(),
         String::new(),
         render_performance_summary(run, baseline_sha),
         String::new(),
         render_data_quality_note(),
         String::new(),
         render_verdict_note(status, run.regression_vs_baseline_pct),
-        String::new(),
-        "_Separate from the **Memory HNSW** sticky comment (`IBEX_BOT_COMMENT_HNSW`)._".to_string(),
-        String::new(),
-        render_details_block(run, gate, baseline_sha),
-        String::new(),
-        render_microbench_details(run),
-        String::new(),
-        render_env_details(run, baseline_sha),
     ];
+
+    if let Some(stage_section) = render_auth_proxy_stages(run.stages.as_ref()) {
+        sections.push(String::new());
+        sections.push(stage_section);
+    }
+
+    sections.push(String::new());
+    sections.push(render_proxy_site_links());
+    sections.push(String::new());
+    sections.push(render_details_block(run, gate, baseline_sha));
+    sections.push(String::new());
+    sections.push(render_microbench_details(run));
+    sections.push(String::new());
+    sections.push(render_env_details(run, baseline_sha));
+    sections.push(String::new());
+    sections.push(
+        "_Suite: **Proxy** (`IBEX_BOT_COMMENT`). Separate sticky comment from **Memory HNSW** (`IBEX_BOT_COMMENT_HNSW`)._"
+            .to_string(),
+    );
 
     Ok(sections.join("\n"))
 }
@@ -160,11 +165,14 @@ pub fn render_hnsw_pr_comment(data: &HnswBenchmarkData) -> Result<String, String
         })
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "—".into());
+    let deferred_1m = run
+        .gate_summary
+        .as_ref()
+        .and_then(|g| g.get("has_1m"))
+        .and_then(|v| v.as_bool())
+        == Some(false);
 
-    let mut lines = vec![
-        COMMENT_MARKER_HNSW.to_string(),
-        render_compact_brand(),
-        String::new(),
+    let mut badge_lines = vec![
         "<p align=\"center\">".to_string(),
         "  <img src=\"https://img.shields.io/badge/Suite-Memory_HNSW-blue?style=for-the-badge&labelColor=2B2B2B\" alt=\"Suite: Memory HNSW\">".to_string(),
         format!(
@@ -176,23 +184,45 @@ pub fn render_hnsw_pr_comment(data: &HnswBenchmarkData) -> Result<String, String
         format!(
             "  <img src=\"https://img.shields.io/badge/SHA-{short_sha}-lightgrey?style=for-the-badge&labelColor=2B2B2B\" alt=\"SHA\">"
         ),
-        "</p>".to_string(),
+    ];
+    if deferred_1m {
+        badge_lines.push(
+            "  <img src=\"https://img.shields.io/badge/1M-deferred_(smoke%2Ffast)-lightgrey?style=for-the-badge&labelColor=2B2B2B\" alt=\"1M deferred on smoke/fast\">".to_string(),
+        );
+    }
+    badge_lines.push("</p>".to_string());
+
+    let headline = if deferred_1m && status == "pass" {
+        format!(
+            "{} **PASS** · sizes `{sizes}` · mean recall@10 `{mean}` · 1M SLA checked on Sunday/full only",
+            status_emoji("pass")
+        )
+    } else {
+        format!(
+            "{} **{}** · sizes `{sizes}` · mean recall@10 `{mean}`",
+            status_emoji(status),
+            status.to_uppercase()
+        )
+    };
+
+    let mut lines = vec![
+        COMMENT_MARKER_HNSW.to_string(),
+        badge_lines.join("\n"),
         String::new(),
         "---".to_string(),
         String::new(),
         "### Memory HNSW suite".to_string(),
         String::new(),
-        format!(
-            "{} **{}** · sizes `{sizes}` · mean recall@10 `{mean}`",
-            status_emoji(status),
-            status.to_uppercase()
-        ),
+        headline,
         String::new(),
         markdown_table(
             &["Field", "Value"],
             &[
                 vec!["Suite".to_string(), "Memory HNSW".to_string()],
-                vec!["Published knobs".to_string(), "`ef=40` · `min_sim=0.70` · `iter=off` · `bulk`".to_string()],
+                vec![
+                    "Published knobs".to_string(),
+                    "`ef=40` · `min_sim=0.70` · `iter=off` · `bulk`".to_string(),
+                ],
                 vec![
                     "Site".to_string(),
                     "[Overview](https://docs.ibexharness.com/benchmarks/memory) · [Latency](https://docs.ibexharness.com/benchmarks/memory/latency) · [History](https://docs.ibexharness.com/benchmarks/memory/history) · [Compare](https://docs.ibexharness.com/benchmarks/memory/compare)".to_string(),
@@ -204,7 +234,7 @@ pub fn render_hnsw_pr_comment(data: &HnswBenchmarkData) -> Result<String, String
         String::new(),
         render_hnsw_cells_table(run.results.as_deref().unwrap_or(&[])),
         String::new(),
-        "_Separate sticky comment from the **Proxy** suite (`IBEX_BOT_COMMENT`). Does not open a data PR on PRs._"
+        "_Suite: **Memory HNSW** (`IBEX_BOT_COMMENT_HNSW`). Separate sticky comment from **Proxy** (`IBEX_BOT_COMMENT`). Does not open a data PR on PRs._"
             .to_string(),
     ];
     if let Some(url) = run.run_url.as_deref().filter(|u| !u.is_empty()) {
@@ -233,7 +263,7 @@ fn append_gate_summary_note(lines: &mut Vec<String>, run: &HnswBenchmarkRun) {
     let recall_ok = summary.get("recall_ok").and_then(|v| v.as_bool());
     let has_1m = summary.get("has_1m").and_then(|v| v.as_bool());
     lines.push(String::new());
-    lines.push("### Gate summary".to_string());
+    lines.push("### Coverage".to_string());
     lines.push(String::new());
     let mut rows = vec![vec![
         "Recall floor (≥98%)".to_string(),
@@ -244,10 +274,10 @@ fn append_gate_summary_note(lines: &mut Vec<String>, run: &HnswBenchmarkRun) {
         },
     ]];
     rows.push(vec![
-        "1M cell present".to_string(),
+        "1M cell".to_string(),
         match has_1m {
-            Some(true) => "yes".into(),
-            Some(false) => "no (smoke/fast)".into(),
+            Some(true) => "present (SLA applied)".into(),
+            Some(false) => "deferred (smoke/fast — Sunday/full only)".into(),
             None => "—".into(),
         },
     ]);
@@ -368,7 +398,7 @@ fn render_compact_brand() -> String {
     )
 }
 
-fn render_verdict_banner(status: &str, gate: &GateResult, run: &BenchmarkRun) -> String {
+fn render_proxy_badge_row(status: &str, gate: &GateResult, run: &BenchmarkRun) -> String {
     let failures = count_gate_failures(gate);
     let status_label = status.to_uppercase();
     let status_color = match status {
@@ -385,8 +415,8 @@ fn render_verdict_banner(status: &str, gate: &GateResult, run: &BenchmarkRun) ->
         .unwrap_or_else(|| "n/a".to_string());
 
     format!(
-        r#"<br/>
-<p align="center">
+        r#"<p align="center">
+  <img src="https://img.shields.io/badge/Suite-Proxy-blue?style=for-the-badge&labelColor=2B2B2B" alt="Suite: Proxy">
   <a href="{DOCS_BASE}/{}">
     <img src="https://img.shields.io/badge/Status-{status_label}-{status_color}?style=for-the-badge&labelColor=2B2B2B" alt="Status: {status_label}">
   </a>
@@ -395,6 +425,24 @@ fn render_verdict_banner(status: &str, gate: &GateResult, run: &BenchmarkRun) ->
 </p>"#,
         resolve_short_sha(run)
     )
+}
+
+fn render_proxy_site_links() -> String {
+    "**Site:** [Overview](https://docs.ibexharness.com/benchmarks) · [Latency](https://docs.ibexharness.com/benchmarks/latency) · [History](https://docs.ibexharness.com/benchmarks/history) · [Compare](https://docs.ibexharness.com/benchmarks/compare)".to_string()
+}
+
+fn render_auth_proxy_stages(stages: Option<&StageMetrics>) -> Option<String> {
+    let stages = stages?;
+    let rows = stage_p99_rows(stages);
+    if rows.is_empty() {
+        return None;
+    }
+    let table = markdown_table_raw(&["Stage", "p99"], &rows);
+    Some(format!(
+        "### Auth & proxy stages (synthetic)\n\n\
+         _Go microbenchmarks for Auth LRU / gRPC and proxy warm-path stages — not live traces. Use k6 p99 for SLA._\n\n\
+         {table}"
+    ))
 }
 
 fn render_performance_summary(run: &BenchmarkRun, baseline_sha: Option<&str>) -> String {
@@ -518,11 +566,6 @@ fn render_details_block(
         String::new(),
         render_gate_table(gate),
     ];
-
-    if let Some(stage_section) = render_stage_details(run.stages.as_ref()) {
-        lines.push(String::new());
-        lines.push(stage_section);
-    }
 
     lines.push(String::new());
     lines.push("</details>".to_string());
@@ -663,20 +706,6 @@ fn gate_check_row(check: &GateCheck) -> Vec<String> {
             "❌ Fail".to_string()
         },
     ]
-}
-
-fn render_stage_details(stages: Option<&StageMetrics>) -> Option<String> {
-    let stages = stages?;
-    let rows = stage_p99_rows(stages);
-    if rows.is_empty() {
-        return None;
-    }
-    let table = markdown_table_raw(&["Stage", "p99"], &rows);
-    Some(format!(
-        "### Stage breakdown (synthetic)\n\n\
-         _Derived from Go microbenchmarks; use k6 p99 for end-to-end SLA._\n\n\
-         <details>\n<summary>Stage p99 values</summary>\n\n{table}\n</details>"
-    ))
 }
 
 fn stage_p99_rows(stages: &StageMetrics) -> Vec<Vec<String>> {
