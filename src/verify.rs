@@ -2,7 +2,10 @@ use regex::Regex;
 
 use serde_json::Value;
 
-use crate::config::{EXPECTED_WORKFLOW_NAME, EXPECTED_WORKFLOW_PATH};
+use crate::config::{
+    EXPECTED_HNSW_WORKFLOW_NAME, EXPECTED_HNSW_WORKFLOW_PATH, EXPECTED_WORKFLOW_NAME,
+    EXPECTED_WORKFLOW_PATH,
+};
 use crate::error::{bot_err, Result};
 use crate::github::{GitHubClient, RepoRef};
 use crate::model::{DispatchPayload, WorkflowRun};
@@ -52,6 +55,18 @@ pub fn require_sha(value: &str) -> Result<String> {
 }
 
 pub fn verify_workflow_run(run: &WorkflowRun) -> Result<()> {
+    verify_workflow_run_named(run, EXPECTED_WORKFLOW_NAME, EXPECTED_WORKFLOW_PATH)
+}
+
+pub fn verify_hnsw_workflow_run(run: &WorkflowRun) -> Result<()> {
+    verify_workflow_run_named(
+        run,
+        EXPECTED_HNSW_WORKFLOW_NAME,
+        EXPECTED_HNSW_WORKFLOW_PATH,
+    )
+}
+
+fn verify_workflow_run_named(run: &WorkflowRun, name: &str, path: &str) -> Result<()> {
     if run.conclusion.as_deref() != Some(EXPECTED_CONCLUSION) {
         return Err(bot_err(format!(
             "run conclusion must be {EXPECTED_CONCLUSION}"
@@ -62,15 +77,11 @@ pub fn verify_workflow_run(run: &WorkflowRun) -> Result<()> {
             "run head_branch must be {EXPECTED_BRANCH}"
         )));
     }
-    if run.name.as_deref() != Some(EXPECTED_WORKFLOW_NAME) {
-        return Err(bot_err(format!(
-            "workflow name must be {EXPECTED_WORKFLOW_NAME}"
-        )));
+    if run.name.as_deref() != Some(name) {
+        return Err(bot_err(format!("workflow name must be {name}")));
     }
-    if run.path.as_deref() != Some(EXPECTED_WORKFLOW_PATH) {
-        return Err(bot_err(format!(
-            "workflow path must be {EXPECTED_WORKFLOW_PATH}"
-        )));
+    if run.path.as_deref() != Some(path) {
+        return Err(bot_err(format!("workflow path must be {path}")));
     }
     Ok(())
 }
@@ -80,12 +91,44 @@ pub async fn verify_dispatch(
     repo_full: &str,
     payload: &DispatchPayload,
 ) -> Result<WorkflowRun> {
+    verify_dispatch_named(
+        client,
+        repo_full,
+        payload,
+        EXPECTED_WORKFLOW_NAME,
+        EXPECTED_WORKFLOW_PATH,
+    )
+    .await
+}
+
+pub async fn verify_hnsw_dispatch(
+    client: &GitHubClient,
+    repo_full: &str,
+    payload: &DispatchPayload,
+) -> Result<WorkflowRun> {
+    verify_dispatch_named(
+        client,
+        repo_full,
+        payload,
+        EXPECTED_HNSW_WORKFLOW_NAME,
+        EXPECTED_HNSW_WORKFLOW_PATH,
+    )
+    .await
+}
+
+async fn verify_dispatch_named(
+    client: &GitHubClient,
+    repo_full: &str,
+    payload: &DispatchPayload,
+    workflow_name: &str,
+    workflow_path: &str,
+) -> Result<WorkflowRun> {
     let head_sha = require_sha(&payload.head_sha)?;
     let (owner, repo) = crate::github::split_repo(repo_full)?;
     let repo_ref = RepoRef::new(owner, repo);
     let run = client.get_workflow_run(repo_ref, payload.run_id).await?;
 
-    verify_workflow_run(&run)?;
+    verify_workflow_run_named(&run, workflow_name, workflow_path)?;
 
     if run.head_sha.as_deref().map(str::to_lowercase).as_deref() != Some(head_sha.as_str()) {
         return Err(bot_err("head_sha mismatch with Actions API".to_string()));

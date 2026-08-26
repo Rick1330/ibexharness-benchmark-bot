@@ -10,6 +10,7 @@ use crate::github::{
 };
 use crate::model::{BenchmarkData, BenchmarkRun, GateResult};
 use crate::publish;
+use crate::publish_hnsw;
 use crate::render::{render_pr_comment, COMMENT_MARKER};
 use crate::verify;
 
@@ -43,6 +44,22 @@ pub enum Commands {
         repo: String,
         #[arg(long)]
         dry_run: bool,
+    },
+    /// Download HNSW artifact, validate, and open a memory benchmark data PR
+    PublishHnsw {
+        #[arg(long)]
+        payload: String,
+        #[arg(long, env = "HARNESS_REPO", default_value = "Rick1330/ibex-harness")]
+        repo: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Verify a memory-benchmark repository_dispatch payload
+    VerifyHnswDispatch {
+        #[arg(long)]
+        payload: String,
+        #[arg(long, env = "HARNESS_REPO", default_value = "Rick1330/ibex-harness")]
+        repo: String,
     },
     /// Render a PR benchmark comment to stdout
     RenderPrComment {
@@ -94,6 +111,34 @@ pub async fn run(cli: Cli) -> Result<()> {
                     "dry_run": dry_run,
                 })
             );
+        }
+        Commands::PublishHnsw {
+            payload,
+            repo,
+            dry_run,
+        } => {
+            let repo = locked_repo(&repo)?;
+            let parsed = verify::parse_payload_json(&payload)?;
+            let client = app_client().await?;
+            let result =
+                publish_hnsw::publish_hnsw_benchmark_data(&client, repo, &parsed, dry_run).await?;
+            println!(
+                "{}",
+                serde_json::json!({
+                    "ok": true,
+                    "skipped": result.skipped,
+                    "branch": result.branch,
+                    "pr_url": result.pr_url,
+                    "dry_run": dry_run,
+                })
+            );
+        }
+        Commands::VerifyHnswDispatch { payload, repo } => {
+            let repo = locked_repo(&repo)?;
+            let parsed = verify::parse_payload_json(&payload)?;
+            let client = app_client().await?;
+            verify::verify_hnsw_dispatch(&client, repo, &parsed).await?;
+            println!("{{\"ok\":true}}");
         }
         Commands::RenderPrComment {
             benchmark_data,

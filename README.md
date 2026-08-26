@@ -13,9 +13,11 @@ GitHub App (Rust) · publishes benchmark data to <a href="https://github.com/Ric
 
 | Command | Purpose |
 | --- | --- |
-| `verify-dispatch` | Re-verify dispatch payload via Actions API |
-| `publish` | Validate artifact and open data PR |
-| `post-pr-comment` | Post rich benchmark comment |
+| `verify-dispatch` | Re-verify proxy Benchmarks dispatch via Actions API |
+| `publish` | Validate proxy artifact and open data PR (`benchmark-data.json` + badge) |
+| `verify-hnsw-dispatch` | Re-verify Memory Benchmarks dispatch |
+| `publish-hnsw` | Validate HNSW artifact and open data PR (`hnsw-benchmark-data.json` only) |
+| `post-pr-comment` | Post rich proxy benchmark comment |
 
 [Setup](docs/APP_SETUP.md) · [Runbook](docs/RUNBOOK.md) · [Threat model](docs/THREAT_MODEL.md)
 
