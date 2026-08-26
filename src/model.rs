@@ -103,7 +103,7 @@ pub struct HnswBenchmarkRun {
     pub results: Option<Vec<HnswSizeResult>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct HnswSizeResult {
     pub corpus_size: Option<i64>,
     pub query_count: Option<i64>,
@@ -111,5 +111,78 @@ pub struct HnswSizeResult {
     pub latency_ms_p50: Option<f64>,
     pub latency_ms_p95: Option<f64>,
     pub latency_ms_p99: Option<f64>,
+    pub latency_ms_p95_ci_low: Option<f64>,
+    pub latency_ms_p95_ci_high: Option<f64>,
     pub ef_search: Option<i64>,
+    pub min_similarity: Option<f64>,
+    pub iterative_scan: Option<String>,
+    pub index_build_mode: Option<String>,
+    pub plan_node_type: Option<String>,
+    pub plan_index_name: Option<String>,
+    pub shared_hit_blocks: Option<i64>,
+    pub shared_read_blocks: Option<i64>,
+    pub idx_scan_delta: Option<i64>,
+    pub row_count_verified: Option<i64>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::HnswSizeResult;
+    use serde_json::json;
+
+    #[test]
+    fn hnsw_size_result_round_trips_methodology_and_diagnostic_fields() {
+        let value = json!({
+            "latency_ms_p95_ci_low": 1.25,
+            "latency_ms_p95_ci_high": 1.75,
+            "min_similarity": 0.7,
+            "iterative_scan": "strict_order",
+            "index_build_mode": "bulk",
+            "plan_node_type": "Index Scan",
+            "plan_index_name": "idx_memories_embedding_hnsw",
+            "shared_hit_blocks": 21,
+            "shared_read_blocks": 3,
+            "idx_scan_delta": 50,
+            "row_count_verified": 10000
+        });
+
+        let result: HnswSizeResult = serde_json::from_value(value.clone()).expect("deserialize");
+
+        assert_eq!(result.latency_ms_p95_ci_low, Some(1.25));
+        assert_eq!(result.latency_ms_p95_ci_high, Some(1.75));
+        assert_eq!(result.min_similarity, Some(0.7));
+        assert_eq!(result.iterative_scan.as_deref(), Some("strict_order"));
+        assert_eq!(result.index_build_mode.as_deref(), Some("bulk"));
+        assert_eq!(result.plan_node_type.as_deref(), Some("Index Scan"));
+        assert_eq!(
+            result.plan_index_name.as_deref(),
+            Some("idx_memories_embedding_hnsw")
+        );
+        assert_eq!(result.shared_hit_blocks, Some(21));
+        assert_eq!(result.shared_read_blocks, Some(3));
+        assert_eq!(result.idx_scan_delta, Some(50));
+        assert_eq!(result.row_count_verified, Some(10_000));
+
+        let serialized = serde_json::to_value(result).expect("serialize");
+        for (field, expected) in value.as_object().expect("fixture is an object") {
+            assert_eq!(serialized.get(field), Some(expected), "field {field}");
+        }
+    }
+
+    #[test]
+    fn hnsw_size_result_defaults_new_fields_when_they_are_absent() {
+        let result: HnswSizeResult = serde_json::from_value(json!({})).expect("deserialize");
+
+        assert!(result.latency_ms_p95_ci_low.is_none());
+        assert!(result.latency_ms_p95_ci_high.is_none());
+        assert!(result.min_similarity.is_none());
+        assert!(result.iterative_scan.is_none());
+        assert!(result.index_build_mode.is_none());
+        assert!(result.plan_node_type.is_none());
+        assert!(result.plan_index_name.is_none());
+        assert!(result.shared_hit_blocks.is_none());
+        assert!(result.shared_read_blocks.is_none());
+        assert!(result.idx_scan_delta.is_none());
+        assert!(result.row_count_verified.is_none());
+    }
 }

@@ -22,7 +22,8 @@
 1. ibex-harness **Memory Benchmarks** (`.github/workflows/memory-benchmark.yml`) completes on `main`.
 2. `notify-hnsw-benchmark-bot` sends `repository_dispatch` (`memory_benchmark_main_complete`).
 3. **publish-hnsw-benchmark-data** verifies workflow name/path (`Memory Benchmarks` / `.github/workflows/memory-benchmark.yml`), downloads artifact `hnsw-benchmark-data`, validates, and commits `web/public/benchmarks/hnsw-benchmark-data.json` only.
-4. Maintainer merges; pin `BOT_RELEASE_SHA` / harness `BENCHMARK_BOT_SHA` together after bot code merges.
+4. Result cells may include methodology knobs (`ef_search`, `min_similarity`, `iterative_scan`, `index_build_mode`, plan/buffer stats). Validation requires core latency/recall fields; optional knobs are range-checked when present.
+5. Maintainer merges; pin `BOT_RELEASE_SHA` / harness `BENCHMARK_BOT_SHA` together after bot code merges.
 
 ## Release pinning (`BOT_RELEASE_SHA`)
 

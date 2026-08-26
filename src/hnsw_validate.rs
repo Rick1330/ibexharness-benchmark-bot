@@ -117,6 +117,35 @@ fn validate_hnsw_run(run: &HnswBenchmarkRun, index: usize) -> Result<()> {
                 "runs[{index}].results[{ri}].corpus_size invalid"
             )));
         }
+        let ef = result
+            .ef_search
+            .ok_or_else(|| bot_err(format!("runs[{index}].results[{ri}].ef_search")))?;
+        if ef < 1 {
+            return Err(bot_err(format!(
+                "runs[{index}].results[{ri}].ef_search invalid"
+            )));
+        }
+        if let Some(min_sim) = result.min_similarity {
+            if !(0.0..=1.0).contains(&min_sim) {
+                return Err(bot_err(format!(
+                    "runs[{index}].results[{ri}].min_similarity out of range"
+                )));
+            }
+        }
+        if let Some(mode) = result.iterative_scan.as_deref() {
+            if !matches!(mode, "off" | "relaxed_order" | "strict_order") {
+                return Err(bot_err(format!(
+                    "runs[{index}].results[{ri}].iterative_scan invalid"
+                )));
+            }
+        }
+        if let Some(mode) = result.index_build_mode.as_deref() {
+            if !matches!(mode, "incremental" | "bulk") {
+                return Err(bot_err(format!(
+                    "runs[{index}].results[{ri}].index_build_mode invalid"
+                )));
+            }
+        }
     }
     Ok(())
 }
@@ -220,6 +249,10 @@ mod tests {
                     latency_ms_p95: Some(2.0),
                     latency_ms_p99: Some(3.0),
                     ef_search: Some(40),
+                    min_similarity: Some(0.70),
+                    iterative_scan: Some("off".into()),
+                    index_build_mode: Some("bulk".into()),
+                    ..Default::default()
                 }]),
             }]),
         }
@@ -235,5 +268,94 @@ mod tests {
         let mut payload = sample_payload();
         payload.benchmark = Some("proxy".into());
         assert!(validate_hnsw_payload(&payload).is_err());
+    }
+
+    fn first_result_mut(payload: &mut HnswBenchmarkData) -> &mut HnswSizeResult {
+        payload
+            .runs
+            .as_mut()
+            .and_then(|runs| runs.first_mut())
+            .and_then(|run| run.results.as_mut())
+            .and_then(|results| results.first_mut())
+            .expect("sample payload has one result")
+    }
+
+    #[test]
+    fn requires_positive_ef_search() {
+        for ef_search in [None, Some(0), Some(-1)] {
+            let mut payload = sample_payload();
+            first_result_mut(&mut payload).ef_search = ef_search;
+
+            let error = validate_hnsw_payload(&payload).expect_err("ef_search must be positive");
+            assert!(error.to_string().contains("results[0].ef_search"));
+        }
+
+        let mut payload = sample_payload();
+        first_result_mut(&mut payload).ef_search = Some(1);
+        validate_hnsw_payload(&payload).expect("one is the minimum valid ef_search");
+    }
+
+    #[test]
+    fn accepts_optional_methodology_knobs_and_similarity_boundaries() {
+        let mut payload = sample_payload();
+        let result = first_result_mut(&mut payload);
+        result.min_similarity = None;
+        result.iterative_scan = None;
+        result.index_build_mode = None;
+        validate_hnsw_payload(&payload).expect("methodology knobs are optional");
+
+        for min_similarity in [0.0, 1.0] {
+            for iterative_scan in ["off", "relaxed_order", "strict_order"] {
+                for index_build_mode in ["incremental", "bulk"] {
+                    let mut payload = sample_payload();
+                    let result = first_result_mut(&mut payload);
+                    result.min_similarity = Some(min_similarity);
+                    result.iterative_scan = Some(iterative_scan.into());
+                    result.index_build_mode = Some(index_build_mode.into());
+
+                    validate_hnsw_payload(&payload)
+                        .expect("documented knob values and inclusive boundaries are valid");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_non_finite_or_out_of_range_min_similarity() {
+        for min_similarity in [-f64::EPSILON, 1.0 + f64::EPSILON, f64::NAN, f64::INFINITY] {
+            let mut payload = sample_payload();
+            first_result_mut(&mut payload).min_similarity = Some(min_similarity);
+
+            let error = validate_hnsw_payload(&payload)
+                .expect_err("min_similarity must be finite and between zero and one");
+            assert!(error
+                .to_string()
+                .contains("results[0].min_similarity out of range"));
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_methodology_modes() {
+        for iterative_scan in ["", "relaxed", "OFF"] {
+            let mut payload = sample_payload();
+            first_result_mut(&mut payload).iterative_scan = Some(iterative_scan.into());
+
+            let error = validate_hnsw_payload(&payload)
+                .expect_err("iterative_scan only accepts documented values");
+            assert!(error
+                .to_string()
+                .contains("results[0].iterative_scan invalid"));
+        }
+
+        for index_build_mode in ["", "concurrent", "BULK"] {
+            let mut payload = sample_payload();
+            first_result_mut(&mut payload).index_build_mode = Some(index_build_mode.into());
+
+            let error = validate_hnsw_payload(&payload)
+                .expect_err("index_build_mode only accepts documented values");
+            assert!(error
+                .to_string()
+                .contains("results[0].index_build_mode invalid"));
+        }
     }
 }
