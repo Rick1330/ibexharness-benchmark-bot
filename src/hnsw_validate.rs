@@ -4,10 +4,9 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
-use regex::Regex;
-
 use crate::error::{bot_err, Result};
 use crate::model::{HnswBenchmarkData, HnswBenchmarkRun, WorkflowRun};
+use crate::verify::is_hex_sha;
 
 const MAX_RUNS: usize = 50;
 const MAX_JSON_BYTES: usize = 2 * 1024 * 1024;
@@ -189,8 +188,7 @@ pub fn hnsw_max_published_run_number(data: &HnswBenchmarkData) -> Option<i64> {
 
 fn require_sha_field(value: &str, field: &str) -> Result<()> {
     let cleaned = value.trim().to_lowercase();
-    let re = Regex::new(r"^[0-9a-f]{7,40}$").expect("sha regex");
-    if !re.is_match(&cleaned) {
+    if !is_hex_sha(&cleaned) {
         return Err(bot_err(format!("{field} must be hexadecimal")));
     }
     Ok(())

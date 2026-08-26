@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use regex::Regex;
 
 use serde_json::Value;
@@ -12,6 +14,14 @@ use crate::model::{DispatchPayload, WorkflowRun};
 
 const EXPECTED_BRANCH: &str = "main";
 const EXPECTED_CONCLUSION: &str = "success";
+
+static SHA_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^[0-9a-f]{7,40}$").expect("sha regex"));
+
+/// Returns true when `value` is already a 7–40 char lowercase hex SHA.
+pub fn is_hex_sha(value: &str) -> bool {
+    SHA_RE.is_match(value)
+}
 
 pub fn parse_payload_json(raw: &str) -> Result<DispatchPayload> {
     let value: Value = serde_json::from_str(raw)
@@ -47,8 +57,7 @@ fn parse_i64_field(value: &Value, field: &str) -> Result<i64> {
 
 pub fn require_sha(value: &str) -> Result<String> {
     let cleaned = value.trim().to_lowercase();
-    let re = Regex::new(r"^[0-9a-f]{7,40}$").expect("sha regex");
-    if !re.is_match(&cleaned) {
+    if !is_hex_sha(&cleaned) {
         return Err(bot_err("head_sha must be hexadecimal".to_string()));
     }
     Ok(cleaned)
