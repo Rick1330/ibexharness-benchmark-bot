@@ -185,3 +185,81 @@ async fn find_existing_publish_pr(
         })
         .await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{HnswBenchmarkRun, HnswSizeResult};
+    use crate::render::render_hnsw_data_pr_body;
+
+    fn data_with_results(results: Option<Vec<HnswSizeResult>>) -> HnswBenchmarkData {
+        HnswBenchmarkData {
+            schema_version: Some(1),
+            benchmark: Some("hnsw_recall_latency".into()),
+            runs: Some(vec![HnswBenchmarkRun {
+                sha: Some("abcdef1".into()),
+                short_sha: Some("abcdef1".into()),
+                timestamp: None,
+                branch: Some("main".into()),
+                run_number: Some(42),
+                run_url: None,
+                methodology: None,
+                mean_recall_at_10: Some(0.98765),
+                results,
+            }]),
+        }
+    }
+
+    #[test]
+    fn renders_each_hnsw_cell_with_methodology_knobs() {
+        let data = data_with_results(Some(vec![
+            HnswSizeResult {
+                corpus_size: Some(10_000),
+                latency_ms_p95: Some(1.26),
+                ef_search: Some(40),
+                min_similarity: Some(0.7),
+                iterative_scan: Some("off".into()),
+                index_build_mode: Some("bulk".into()),
+                ..Default::default()
+            },
+            HnswSizeResult {
+                corpus_size: Some(1_000_000),
+                latency_ms_p95: Some(12.04),
+                ef_search: Some(80),
+                min_similarity: Some(0.755),
+                iterative_scan: Some("strict_order".into()),
+                index_build_mode: Some("incremental".into()),
+                ..Default::default()
+            },
+        ]));
+
+        let body = render_hnsw_data_pr_body(&data, Some("https://example.test/runs/42"), 42);
+
+        assert!(body.contains("## Automated HNSW benchmark data update"));
+        assert!(body.contains("| Size | Recall@10 | p95 | ef | min_sim | iterative | build |"));
+        assert!(body.contains("| 10000 |"));
+        assert!(body.contains("1.3ms"));
+        assert!(body.contains("| 1000000 |"));
+        assert!(body.contains("12.0ms"));
+        assert!(body.contains("strict_order"));
+        assert!(body.contains("incremental"));
+        assert!(body.contains("production-like knobs"));
+        assert!(body.contains("https://example.test/runs/42"));
+    }
+
+    #[test]
+    fn renders_explicit_fallbacks_for_missing_cell_data() {
+        let data = data_with_results(Some(vec![HnswSizeResult::default()]));
+        let body = render_hnsw_data_pr_body(&data, None, 7);
+
+        assert!(body.contains("| — | — | — | — | — | — | — |"));
+
+        let no_runs = HnswBenchmarkData {
+            schema_version: Some(1),
+            benchmark: Some("hnsw_recall_latency".into()),
+            runs: None,
+        };
+        let body = render_hnsw_data_pr_body(&no_runs, None, 8);
+        assert!(body.contains("_No result cells in latest run._"));
+    }
+}
