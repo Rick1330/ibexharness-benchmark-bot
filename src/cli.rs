@@ -8,10 +8,12 @@ use crate::error::{bot_err, Result};
 use crate::github::{
     installation_token, CommitStatus, GitHubClient, IssueCommentUpdate, IssueRef, RepoRef,
 };
-use crate::model::{BenchmarkData, BenchmarkRun, GateResult};
+use crate::model::{BenchmarkData, BenchmarkRun, GateResult, HnswBenchmarkData};
 use crate::publish;
 use crate::publish_hnsw;
-use crate::render::{render_pr_comment, COMMENT_MARKER};
+use crate::render::{
+    render_hnsw_pr_comment, render_pr_comment, COMMENT_MARKER, COMMENT_MARKER_HNSW,
+};
 use crate::verify;
 
 const STATUS_CONTEXT: &str = "ibex-harness/benchmarks";
@@ -74,6 +76,22 @@ pub enum Commands {
         benchmark_data: PathBuf,
         #[arg(long, env = "GATE_RESULT_PATH")]
         gate_result: PathBuf,
+        #[arg(long, env = "GITHUB_TOKEN")]
+        github_token: String,
+        #[arg(long, env = "GITHUB_REPOSITORY")]
+        github_repository: String,
+        #[arg(long, env = "PR_NUMBER")]
+        pr_number: i64,
+    },
+    /// Render a Memory HNSW PR comment to stdout
+    RenderHnswPrComment {
+        #[arg(long, env = "HNSW_BENCHMARK_DATA_PATH")]
+        hnsw_benchmark_data: PathBuf,
+    },
+    /// Render and post a Memory HNSW PR comment (separate sticky marker)
+    PostHnswPrComment {
+        #[arg(long, env = "HNSW_BENCHMARK_DATA_PATH")]
+        hnsw_benchmark_data: PathBuf,
         #[arg(long, env = "GITHUB_TOKEN")]
         github_token: String,
         #[arg(long, env = "GITHUB_REPOSITORY")]
@@ -158,8 +176,26 @@ pub async fn run(cli: Cli) -> Result<()> {
             let (owner, repo) = crate::github::split_repo(&github_repository)?;
             let repo_ref = RepoRef::new(owner, repo);
             let client = comment_client(&github_token).await?;
-            upsert_pr_comment(&client, repo_ref, pr_number, &body).await?;
+            upsert_pr_comment(&client, repo_ref, pr_number, &body, COMMENT_MARKER).await?;
             post_commit_status(&client, repo_ref, &data, &gate).await?;
+        }
+        Commands::RenderHnswPrComment {
+            hnsw_benchmark_data,
+        } => {
+            let body = render_hnsw_comment_from_path(&hnsw_benchmark_data)?;
+            print!("{body}");
+        }
+        Commands::PostHnswPrComment {
+            hnsw_benchmark_data,
+            github_token,
+            github_repository,
+            pr_number,
+        } => {
+            let body = render_hnsw_comment_from_path(&hnsw_benchmark_data)?;
+            let (owner, repo) = crate::github::split_repo(&github_repository)?;
+            let repo_ref = RepoRef::new(owner, repo);
+            let client = comment_client(&github_token).await?;
+            upsert_pr_comment(&client, repo_ref, pr_number, &body, COMMENT_MARKER_HNSW).await?;
         }
     }
     Ok(())
@@ -207,6 +243,11 @@ fn render_comment_from_paths(
     Ok((body, data, gate))
 }
 
+fn render_hnsw_comment_from_path(hnsw_benchmark_data: &PathBuf) -> Result<String> {
+    let data = read_json::<HnswBenchmarkData>(hnsw_benchmark_data)?;
+    render_hnsw_pr_comment(&data).map_err(bot_err)
+}
+
 fn load_gate_result(gate_result: &PathBuf) -> GateResult {
     if !gate_result.exists() {
         return empty_gate_result();
@@ -233,14 +274,18 @@ async fn upsert_pr_comment(
     repo: RepoRef<'_>,
     pr_number: i64,
     body: &str,
+    marker: &str,
 ) -> Result<()> {
-    let body = ensure_comment_marker(body);
+    let body = ensure_comment_marker(body, marker);
     let issue = IssueRef {
         repo,
         number: pr_number,
     };
     let comments = client.list_issue_comments(issue).await?;
-    if let Some(existing) = comments.iter().find(|comment| comment_has_marker(comment)) {
+    if let Some(existing) = comments
+        .iter()
+        .find(|comment| comment_has_marker(comment, marker))
+    {
         let id = existing
             .get("id")
             .and_then(|value| value.as_i64())
@@ -252,27 +297,27 @@ async fn upsert_pr_comment(
                 body: &body,
             })
             .await?;
-        println!("post-pr-comment: comment updated");
+        println!("post-pr-comment: comment updated ({marker})");
         return Ok(());
     }
     client.post_issue_comment(issue, &body).await?;
-    println!("post-pr-comment: comment posted");
+    println!("post-pr-comment: comment posted ({marker})");
     Ok(())
 }
 
-fn ensure_comment_marker(body: &str) -> String {
-    if body.contains(COMMENT_MARKER) {
+fn ensure_comment_marker(body: &str, marker: &str) -> String {
+    if body.contains(marker) {
         body.to_string()
     } else {
-        format!("{COMMENT_MARKER}\n{body}")
+        format!("{marker}\n{body}")
     }
 }
 
-fn comment_has_marker(comment: &serde_json::Value) -> bool {
+fn comment_has_marker(comment: &serde_json::Value, marker: &str) -> bool {
     comment
         .get("body")
         .and_then(|body| body.as_str())
-        .is_some_and(|body| body.contains(COMMENT_MARKER))
+        .is_some_and(|body| body.contains(marker))
 }
 
 async fn post_commit_status(

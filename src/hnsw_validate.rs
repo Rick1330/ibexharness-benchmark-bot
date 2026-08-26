@@ -80,6 +80,11 @@ fn validate_hnsw_run(run: &HnswBenchmarkRun, index: usize) -> Result<()> {
             "runs[{index}].mean_recall_at_10 out of range"
         )));
     }
+    if let Some(status) = run.status.as_deref() {
+        if !matches!(status, "pass" | "fail" | "warn") {
+            return Err(bot_err(format!("runs[{index}].status invalid")));
+        }
+    }
     let results = run
         .results
         .as_ref()
@@ -254,6 +259,7 @@ mod tests {
                     index_build_mode: Some("bulk".into()),
                     ..Default::default()
                 }]),
+                ..Default::default()
             }]),
         }
     }

@@ -206,8 +206,33 @@ mod tests {
                 methodology: None,
                 mean_recall_at_10: Some(0.98765),
                 results,
+                ..Default::default()
             }]),
         }
+    }
+
+    #[test]
+    fn renders_hnsw_pr_comment_with_separate_marker() {
+        let data = data_with_results(Some(vec![HnswSizeResult {
+            corpus_size: Some(10_000),
+            recall_at_10: Some(1.0),
+            latency_ms_p95: Some(20.0),
+            ef_search: Some(40),
+            min_similarity: Some(0.7),
+            iterative_scan: Some("off".into()),
+            index_build_mode: Some("bulk".into()),
+            ..Default::default()
+        }]));
+        let mut data = data;
+        if let Some(run) = data.runs.as_mut().and_then(|runs| runs.first_mut()) {
+            run.status = Some("warn".into());
+        }
+        let body = crate::render::render_hnsw_pr_comment(&data).expect("render");
+        assert!(body.contains("<!-- IBEX_BOT_COMMENT_HNSW -->"));
+        assert!(!body.contains("<!-- IBEX_BOT_COMMENT -->\n"));
+        assert!(body.contains("### Memory HNSW"));
+        assert!(body.contains("WARN"));
+        assert!(body.contains("/benchmarks/memory"));
     }
 
     #[test]
