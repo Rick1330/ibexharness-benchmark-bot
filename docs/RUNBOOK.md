@@ -6,8 +6,8 @@
 
 | Path | Where | Cadence | Outcome |
 | --- | --- | --- | --- |
-| **Proxy PR quality comment** | ibex-harness `Benchmarks` on `pull_request` | Every matching PR (**smoke** profile) | App posts sticky **Proxy suite** comment (`IBEX_BOT_COMMENT`). **Never** opens a data PR. |
-| **Memory HNSW PR comment** | ibex-harness `Memory Benchmarks` on `pull_request` | Every matching PR (**smoke** = 10K) | App posts sticky **Memory HNSW suite** comment (`IBEX_BOT_COMMENT_HNSW`) via `post-hnsw-pr-comment` (status, corpus table, gate summary, site links). **Never** opens a data PR. |
+| **Proxy PR quality comment** | ibex-harness `Benchmarks` on `pull_request` | Every matching PR (**smoke** profile) | App posts sticky **Proxy suite** comment (`IBEX_BOT_COMMENT`): Suite/Status/Regressions/P99 badges, performance summary, promoted **Auth & proxy stages** table, k6/regression details. **Never** opens a data PR. |
+| **Memory HNSW PR comment** | ibex-harness `Memory Benchmarks` on `pull_request` | Every matching PR (**smoke** = 10K) | App posts sticky **Memory HNSW suite** comment (`IBEX_BOT_COMMENT_HNSW`): aligned badge row, corpus table, Coverage section. Missing 1M on smoke/fast shows informational **1M deferred**, not WARN. **Never** opens a data PR. |
 | **Daily proxy data publish** | ibex-harness `notify-benchmark-bot` → this repo `Publish benchmark data` | Daily 04:00 UTC + main push collects; Sunday uses `full` profile | Bot opens a `chore(bench): …` PR updating `benchmark-data.json` + `badge.svg`. |
 | **HNSW data publish** | ibex-harness `Memory Benchmarks` → this repo `Publish HNSW benchmark data` | Sunday 05:00 UTC + main push / dispatch | Bot opens a data PR updating **only** `hnsw-benchmark-data.json` (never proxy files). |
 
