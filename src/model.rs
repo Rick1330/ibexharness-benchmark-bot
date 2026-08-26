@@ -103,7 +103,7 @@ pub struct HnswBenchmarkRun {
     pub results: Option<Vec<HnswSizeResult>>,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
 pub struct HnswSizeResult {
     pub corpus_size: Option<i64>,
     pub query_count: Option<i64>,
@@ -111,5 +111,16 @@ pub struct HnswSizeResult {
     pub latency_ms_p50: Option<f64>,
     pub latency_ms_p95: Option<f64>,
     pub latency_ms_p99: Option<f64>,
+    pub latency_ms_p95_ci_low: Option<f64>,
+    pub latency_ms_p95_ci_high: Option<f64>,
     pub ef_search: Option<i64>,
+    pub min_similarity: Option<f64>,
+    pub iterative_scan: Option<String>,
+    pub index_build_mode: Option<String>,
+    pub plan_node_type: Option<String>,
+    pub plan_index_name: Option<String>,
+    pub shared_hit_blocks: Option<i64>,
+    pub shared_read_blocks: Option<i64>,
+    pub idx_scan_delta: Option<i64>,
+    pub row_count_verified: Option<i64>,
 }

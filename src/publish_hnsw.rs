@@ -140,15 +140,42 @@ fn render_hnsw_pr_body(data: &HnswBenchmarkData, run_url: Option<&str>, run_numb
         .and_then(|run| run.mean_recall_at_10)
         .map(|v| format!("{:.4}", v))
         .unwrap_or_else(|| "n/a".into());
-    let sizes = latest
+    let cells = latest
         .and_then(|run| run.results.as_ref())
         .map(|results| {
             results
                 .iter()
-                .filter_map(|r| r.corpus_size)
-                .map(|n| n.to_string())
+                .map(|r| {
+                    let size = r
+                        .corpus_size
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "?".into());
+                    let p95 = r
+                        .latency_ms_p95
+                        .map(|v| format!("{v:.1}"))
+                        .unwrap_or_else(|| "n/a".into());
+                    let ef = r
+                        .ef_search
+                        .map(|v| v.to_string())
+                        .unwrap_or_else(|| "?".into());
+                    let min_sim = r
+                        .min_similarity
+                        .map(|v| format!("{v:.2}"))
+                        .unwrap_or_else(|| "n/a".into());
+                    let iter = r
+                        .iterative_scan
+                        .clone()
+                        .unwrap_or_else(|| "n/a".into());
+                    let build = r
+                        .index_build_mode
+                        .clone()
+                        .unwrap_or_else(|| "n/a".into());
+                    format!(
+                        "`{size}` p95={p95}ms ef={ef} min_sim={min_sim} iter={iter} build={build}"
+                    )
+                })
                 .collect::<Vec<_>>()
-                .join(", ")
+                .join("; ")
         })
         .unwrap_or_else(|| "n/a".into());
     let run_link = run_url.unwrap_or("(missing)");
@@ -156,9 +183,11 @@ fn render_hnsw_pr_body(data: &HnswBenchmarkData, run_url: Option<&str>, run_numb
         "Automated HNSW / memory benchmark data publish.\n\n\
          - Workflow run: [{run_number}]({run_link})\n\
          - Mean recall@10: `{mean}`\n\
-         - Corpus sizes: `{sizes}`\n\
+         - Cells: {cells}\n\
          - Path: `{HNSW_BENCHMARK_DATA_PATH}`\n\n\
-         Does **not** modify proxy `benchmark-data.json`.\n"
+         Does **not** modify proxy `benchmark-data.json`.\n\
+         Published cells should use production-like knobs (`ef_search=40`, \
+         `min_similarity≈0.70`, `iterative_scan=off`, bulk index build).\n"
     )
 }
 

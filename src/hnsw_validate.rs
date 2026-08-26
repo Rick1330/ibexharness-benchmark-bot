@@ -117,6 +117,35 @@ fn validate_hnsw_run(run: &HnswBenchmarkRun, index: usize) -> Result<()> {
                 "runs[{index}].results[{ri}].corpus_size invalid"
             )));
         }
+        let ef = result
+            .ef_search
+            .ok_or_else(|| bot_err(format!("runs[{index}].results[{ri}].ef_search")))?;
+        if ef < 1 {
+            return Err(bot_err(format!(
+                "runs[{index}].results[{ri}].ef_search invalid"
+            )));
+        }
+        if let Some(min_sim) = result.min_similarity {
+            if !(0.0..=1.0).contains(&min_sim) {
+                return Err(bot_err(format!(
+                    "runs[{index}].results[{ri}].min_similarity out of range"
+                )));
+            }
+        }
+        if let Some(mode) = result.iterative_scan.as_deref() {
+            if !matches!(mode, "off" | "relaxed_order" | "strict_order") {
+                return Err(bot_err(format!(
+                    "runs[{index}].results[{ri}].iterative_scan invalid"
+                )));
+            }
+        }
+        if let Some(mode) = result.index_build_mode.as_deref() {
+            if !matches!(mode, "incremental" | "bulk") {
+                return Err(bot_err(format!(
+                    "runs[{index}].results[{ri}].index_build_mode invalid"
+                )));
+            }
+        }
     }
     Ok(())
 }
@@ -220,6 +249,10 @@ mod tests {
                     latency_ms_p95: Some(2.0),
                     latency_ms_p99: Some(3.0),
                     ef_search: Some(40),
+                    min_similarity: Some(0.70),
+                    iterative_scan: Some("off".into()),
+                    index_build_mode: Some("bulk".into()),
+                    ..Default::default()
                 }]),
             }]),
         }
