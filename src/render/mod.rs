@@ -35,17 +35,25 @@ pub fn render_pr_comment(data: &BenchmarkData, gate: &GateResult) -> Result<Stri
 
     let sections = vec![
         COMMENT_MARKER.to_string(),
+        render_compact_brand(),
+        String::new(),
+        "<p align=\"center\">".to_string(),
+        "  <img src=\"https://img.shields.io/badge/Suite-Proxy-blue?style=for-the-badge&labelColor=2B2B2B\" alt=\"Suite: Proxy\">".to_string(),
+        "</p>".to_string(),
+        String::new(),
         render_verdict_banner(status, gate, run),
         String::new(),
         "---".to_string(),
         String::new(),
-        "### 🏎️ Performance summary".to_string(),
+        "### 🏎️ Proxy suite — performance summary".to_string(),
         String::new(),
         render_performance_summary(run, baseline_sha),
         String::new(),
         render_data_quality_note(),
         String::new(),
         render_verdict_note(status, run.regression_vs_baseline_pct),
+        String::new(),
+        "_Separate from the **Memory HNSW** sticky comment (`IBEX_BOT_COMMENT_HNSW`)._".to_string(),
         String::new(),
         render_details_block(run, gate, baseline_sha),
         String::new(),
@@ -140,13 +148,29 @@ pub fn render_hnsw_pr_comment(data: &HnswBenchmarkData) -> Result<String, String
         "fail" => "red",
         _ => "lightgrey",
     };
+    let sizes = run
+        .results
+        .as_ref()
+        .map(|rows| {
+            rows.iter()
+                .filter_map(|r| r.corpus_size)
+                .map(format_corpus_size)
+                .collect::<Vec<_>>()
+                .join(" · ")
+        })
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "—".into());
 
     let mut lines = vec![
         COMMENT_MARKER_HNSW.to_string(),
-        "<br/>".to_string(),
+        render_compact_brand(),
+        String::new(),
         "<p align=\"center\">".to_string(),
         format!(
-            "  <img src=\"https://img.shields.io/badge/HNSW-{status}-{status_badge}?style=for-the-badge&labelColor=2B2B2B\" alt=\"HNSW: {status}\">"
+            "  <img src=\"https://img.shields.io/badge/Suite-Memory_HNSW-blue?style=for-the-badge&labelColor=2B2B2B\" alt=\"Suite: Memory HNSW\">"
+        ),
+        format!(
+            "  <img src=\"https://img.shields.io/badge/Status-{status}-{status_badge}?style=for-the-badge&labelColor=2B2B2B\" alt=\"Status: {status}\">"
         ),
         format!(
             "  <img src=\"https://img.shields.io/badge/Mean_recall-{mean}-informational?style=for-the-badge&labelColor=2B2B2B\" alt=\"Mean recall\">"
@@ -158,19 +182,31 @@ pub fn render_hnsw_pr_comment(data: &HnswBenchmarkData) -> Result<String, String
         String::new(),
         "---".to_string(),
         String::new(),
-        "### Memory HNSW".to_string(),
+        "### Memory HNSW suite".to_string(),
         String::new(),
         format!(
-            "{} **{}** · mean recall@10 `{mean}` · [`/benchmarks/memory`](https://docs.ibexharness.com/benchmarks/memory)",
+            "{} **{}** · sizes `{sizes}` · mean recall@10 `{mean}`",
             status_emoji(status),
             status.to_uppercase()
+        ),
+        String::new(),
+        markdown_table(
+            &["Field", "Value"],
+            &[
+                vec!["Suite".to_string(), "Memory HNSW".to_string()],
+                vec!["Published knobs".to_string(), "`ef=40` · `min_sim=0.70` · `iter=off` · `bulk`".to_string()],
+                vec![
+                    "Site".to_string(),
+                    "[Overview](https://docs.ibexharness.com/benchmarks/memory) · [Latency](https://docs.ibexharness.com/benchmarks/memory/latency) · [History](https://docs.ibexharness.com/benchmarks/memory/history) · [Compare](https://docs.ibexharness.com/benchmarks/memory/compare)".to_string(),
+                ],
+            ],
         ),
         String::new(),
         "### Corpus cells".to_string(),
         String::new(),
         render_hnsw_cells_table(run.results.as_deref().unwrap_or(&[])),
         String::new(),
-        "_Production publish knobs: `ef_search=40`, `min_similarity=0.70`, `iterative_scan=off`, bulk index build. Separate from proxy PR comment._"
+        "_Separate sticky comment from the **Proxy** suite (`IBEX_BOT_COMMENT`). Does not open a data PR on PRs._"
             .to_string(),
     ];
     if let Some(url) = run.run_url.as_deref().filter(|u| !u.is_empty()) {
@@ -181,16 +217,47 @@ pub fn render_hnsw_pr_comment(data: &HnswBenchmarkData) -> Result<String, String
     Ok(lines.join("\n"))
 }
 
+fn format_corpus_size(size: i64) -> String {
+    if size >= 1_000_000 {
+        format!("{}M", size / 1_000_000)
+    } else if size >= 1_000 {
+        format!("{}K", size / 1_000)
+    } else {
+        size.to_string()
+    }
+}
+
 fn append_gate_summary_note(lines: &mut Vec<String>, run: &HnswBenchmarkRun) {
     let Some(summary) = run.gate_summary.as_ref() else {
         return;
     };
     let note = summary.get("note").and_then(|v| v.as_str()).unwrap_or("");
-    if note.is_empty() {
-        return;
-    }
+    let recall_ok = summary.get("recall_ok").and_then(|v| v.as_bool());
+    let has_1m = summary.get("has_1m").and_then(|v| v.as_bool());
     lines.push(String::new());
-    lines.push(format!("> {note}"));
+    lines.push("### Gate summary".to_string());
+    lines.push(String::new());
+    let mut rows = vec![vec![
+        "Recall floor (≥98%)".to_string(),
+        match recall_ok {
+            Some(true) => "✅".into(),
+            Some(false) => "❌".into(),
+            None => "—".into(),
+        },
+    ]];
+    rows.push(vec![
+        "1M cell present".to_string(),
+        match has_1m {
+            Some(true) => "yes".into(),
+            Some(false) => "no (smoke/fast)".into(),
+            None => "—".into(),
+        },
+    ]);
+    lines.push(markdown_table(&["Check", "Result"], &rows));
+    if !note.is_empty() {
+        lines.push(String::new());
+        lines.push(format!("> {note}"));
+    }
 }
 
 /// Branded body for automated HNSW / memory data PRs (mirrors proxy data PR shape).

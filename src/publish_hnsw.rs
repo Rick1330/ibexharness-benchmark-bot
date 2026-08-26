@@ -229,10 +229,11 @@ mod tests {
         }
         let body = crate::render::render_hnsw_pr_comment(&data).expect("render");
         assert!(body.contains("<!-- IBEX_BOT_COMMENT_HNSW -->"));
-        assert!(!body.contains("<!-- IBEX_BOT_COMMENT -->\n"));
-        assert!(body.contains("### Memory HNSW"));
+        assert!(body.contains("### Memory HNSW suite"));
+        assert!(body.contains("Memory HNSW"));
         assert!(body.contains("WARN"));
         assert!(body.contains("/benchmarks/memory"));
+        assert!(body.contains("### Gate summary"));
     }
 
     #[test]
