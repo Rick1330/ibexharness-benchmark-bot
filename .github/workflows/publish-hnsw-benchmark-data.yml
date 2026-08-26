@@ -35,9 +35,7 @@ jobs:
       contents: read
     steps:
       - name: Require pinned release
-        env:
-          BOT_RELEASE_SHA: ${{ vars.BOT_RELEASE_SHA }}
-        run: test -n "${BOT_RELEASE_SHA}"
+        run: test -n "${{ vars.BOT_RELEASE_SHA }}"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

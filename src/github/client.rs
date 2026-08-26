@@ -164,7 +164,7 @@ impl GitHubClient {
         let artifacts: Value = self
             .http
             .get_json(&format!(
-                "{}/actions/runs/{run_id}/artifacts?per_page=100",
+                "{}/actions/runs/{run_id}/artifacts",
                 repo.base_path()
             ))
             .await?;
