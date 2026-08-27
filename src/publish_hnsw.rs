@@ -233,14 +233,16 @@ mod tests {
             }));
         }
         let body = crate::render::render_hnsw_pr_comment(&data).expect("render");
-        assert!(body.contains("<!-- IBEX_BOT_COMMENT_HNSW -->"));
-        assert!(body.contains("### Memory HNSW suite"));
-        assert!(body.contains("Memory HNSW"));
+        assert!(body.contains("<!-- IBEX_BOT_COMMENT -->"));
+        assert!(!body.contains("<!-- IBEX_BOT_COMMENT_HNSW -->"));
+        assert!(body.contains("<!-- IBEX_HNSW_START -->"));
+        assert!(body.contains("### Memory HNSW"));
         assert!(body.contains("PASS"));
-        assert!(body.contains("1M-deferred") || body.contains("1M deferred"));
+        assert!(body.contains("1M Sunday-only") || body.contains("1M deferred"));
         assert!(!body.contains("**WARN**"));
-        assert!(body.contains("/benchmarks/memory"));
-        assert!(body.contains("### Coverage"));
+        assert!(!body.contains("https://docs.ibexharness.com/benchmarks/memory"));
+        assert!(body.contains("**Coverage**"));
+        assert!(body.contains("<summary>More</summary>"));
     }
 
     #[test]

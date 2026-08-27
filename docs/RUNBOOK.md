@@ -6,12 +6,12 @@
 
 | Path | Where | Cadence | Outcome |
 | --- | --- | --- | --- |
-| **Proxy PR quality comment** | ibex-harness `Benchmarks` on `pull_request` | Every matching PR (**smoke** profile) | App posts sticky **Proxy suite** comment (`IBEX_BOT_COMMENT`): Suite/Status/Regressions/P99 badges, performance summary, promoted **Auth & proxy stages** table, k6/regression details. **Never** opens a data PR. |
-| **Memory HNSW PR comment** | ibex-harness `Memory Benchmarks` on `pull_request` | Every matching PR (**smoke** = 10K) | App posts sticky **Memory HNSW suite** comment (`IBEX_BOT_COMMENT_HNSW`): aligned badge row, corpus table, Coverage section. Missing 1M on smoke/fast shows informational **1M deferred**, not WARN. **Never** opens a data PR. |
+| **Proxy PR quality comment** | ibex-harness `Benchmarks` on `pull_request` | Every matching PR (**smoke** profile) | App upserts the **Proxy** section of the shared sticky comment (`IBEX_BOT_COMMENT`): KPI line, performance table, **Auth & proxy stages** collapsed by default, extra k6/regression details in **More**. **Never** opens a data PR. |
+| **Memory HNSW PR comment** | ibex-harness `Memory Benchmarks` on `pull_request` | Every matching PR (**smoke** = 10K) | App upserts the **Memory HNSW** section of the **same** sticky comment: KPI line + compact Size/Recall/p95 table; knobs/coverage in **More**. Missing 1M on smoke/fast is informational, not WARN. **Never** opens a data PR. |
 | **Daily proxy data publish** | ibex-harness `notify-benchmark-bot` → this repo `Publish benchmark data` | Daily 04:00 UTC + main push collects; Sunday uses `full` profile | Bot opens a `chore(bench): …` PR updating `benchmark-data.json` + `badge.svg`. |
 | **HNSW data publish** | ibex-harness `Memory Benchmarks` → this repo `Publish HNSW benchmark data` | Sunday 05:00 UTC + main push / dispatch | Bot opens a data PR updating **only** `hnsw-benchmark-data.json` (never proxy files). |
 
-Suite comments are independent sticky threads. Do not reuse markers across suites.
+Suite comments share one sticky thread. Each suite updates only its section (`IBEX_PROXY_*` / `IBEX_HNSW_*`).
 
 ### Daily publish flow (proxy)
 
@@ -144,7 +144,7 @@ Use GitHub email notifications for workflow failures.
 After enabling the bot:
 
 1. Confirm every matching harness PR receives a **proxy** quality comment (no data PR).
-2. Confirm Memory Benchmarks PRs receive a separate **HNSW** sticky comment (`IBEX_BOT_COMMENT_HNSW`).
+2. Confirm Memory Benchmarks PRs update the **same** sticky comment (Memory HNSW section; no second thread).
 3. Confirm Sunday cron (or one manual main `workflow_dispatch`) produces **one** bot data PR per suite that ran.
 4. Confirm `/benchmarks` and `/benchmarks/memory` show new runs after those PRs merge.
 5. Confirm PR comments use the pinned Rust renderer (rich format).

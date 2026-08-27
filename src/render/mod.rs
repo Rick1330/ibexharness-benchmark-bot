@@ -7,10 +7,11 @@ use crate::model::{
 pub use sanitize::{
     escape_cell, format_delta, format_latency_delta, format_latency_ms, format_ns_per_op,
     format_number, format_throughput, format_throughput_delta, sanitize_branch, sanitize_gate_name,
-    sanitize_sha, status_emoji, COMMENT_MARKER, COMMENT_MARKER_HNSW,
+    sanitize_sha, status_emoji, COMMENT_MARKER, COMMENT_MARKER_HNSW, HNSW_SECTION_END,
+    HNSW_SECTION_START, PROXY_SECTION_END, PROXY_SECTION_START,
 };
 
-const DOCS_BASE: &str = "https://docs.ibexharness.com/benchmarks/history";
+const DOCS_BASE: &str = "https://docs.ibexharness.com/benchmarks";
 const HARNESS_REPO: &str = "https://github.com/Rick1330/ibex-harness";
 const BRAND_MARK_LIGHT: &str =
     "https://raw.githubusercontent.com/Rick1330/ibexharness-benchmark-bot/main/docs/brand/ibex-mark-light.png";
@@ -24,50 +25,22 @@ const THROUGHPUT_BAR_SCALE: f64 = 10_000.0;
 const VISUAL_BAR_WIDTH: usize = 10;
 
 pub fn render_pr_comment(data: &BenchmarkData, gate: &GateResult) -> Result<String, String> {
-    let run = data
-        .runs
-        .as_ref()
-        .and_then(|runs| runs.first())
-        .ok_or_else(|| "benchmark data has no runs".to_string())?;
+    merge_proxy_into_comment("", data, gate)
+}
 
-    let status = run.status.as_deref().unwrap_or("unknown");
-    let baseline_sha = data.baseline_sha.as_deref();
-
-    let mut sections = vec![
-        COMMENT_MARKER.to_string(),
-        render_proxy_badge_row(status, gate, run),
-        String::new(),
-        "---".to_string(),
-        String::new(),
-        "### Performance summary".to_string(),
-        String::new(),
-        render_performance_summary(run, baseline_sha),
-        String::new(),
-        render_data_quality_note(),
-        String::new(),
-        render_verdict_note(status, run.regression_vs_baseline_pct),
-    ];
-
-    if let Some(stage_section) = render_auth_proxy_stages(run.stages.as_ref()) {
-        sections.push(String::new());
-        sections.push(stage_section);
-    }
-
-    sections.push(String::new());
-    sections.push(render_proxy_site_links());
-    sections.push(String::new());
-    sections.push(render_details_block(run, gate, baseline_sha));
-    sections.push(String::new());
-    sections.push(render_microbench_details(run));
-    sections.push(String::new());
-    sections.push(render_env_details(run, baseline_sha));
-    sections.push(String::new());
-    sections.push(
-        "_Suite: **Proxy** (`IBEX_BOT_COMMENT`). Separate sticky comment from **Memory HNSW** (`IBEX_BOT_COMMENT_HNSW`)._"
-            .to_string(),
-    );
-
-    Ok(sections.join("\n"))
+/// Merge the Proxy suite into the shared sticky comment (preserves Memory HNSW).
+pub fn merge_proxy_into_comment(
+    existing: &str,
+    data: &BenchmarkData,
+    gate: &GateResult,
+) -> Result<String, String> {
+    let section = render_proxy_section(data, gate)?;
+    Ok(upsert_section(
+        &ensure_comment_shell(existing),
+        PROXY_SECTION_START,
+        PROXY_SECTION_END,
+        &section,
+    ))
 }
 
 pub fn render_data_pr_body(
@@ -133,8 +106,104 @@ pub fn render_data_pr_body(
     lines.join("\n")
 }
 
-/// Compact Memory HNSW PR comment (separate sticky thread from proxy).
+/// Compact Memory HNSW section merged into the shared sticky comment.
 pub fn render_hnsw_pr_comment(data: &HnswBenchmarkData) -> Result<String, String> {
+    merge_hnsw_into_comment("", data)
+}
+
+/// Merge the Memory HNSW suite into the shared sticky comment (preserves Proxy).
+pub fn merge_hnsw_into_comment(existing: &str, data: &HnswBenchmarkData) -> Result<String, String> {
+    let section = render_hnsw_section(data)?;
+    Ok(upsert_section(
+        &ensure_comment_shell(existing),
+        HNSW_SECTION_START,
+        HNSW_SECTION_END,
+        &section,
+    ))
+}
+
+fn comment_intro() -> String {
+    format!("**IBEX benchmarks** · [docs]({DOCS_BASE})")
+}
+
+fn ensure_comment_shell(existing: &str) -> String {
+    let normalized = existing.replace(COMMENT_MARKER_HNSW, COMMENT_MARKER);
+    if normalized.contains(COMMENT_MARKER) {
+        return normalized;
+    }
+    if normalized.trim().is_empty() {
+        return format!("{COMMENT_MARKER}\n\n{}", comment_intro());
+    }
+    format!("{COMMENT_MARKER}\n\n{}\n\n{normalized}", comment_intro())
+}
+
+fn upsert_section(body: &str, start: &str, end: &str, inner: &str) -> String {
+    let block = format!("{start}\n{}\n{end}", inner.trim());
+    if let Some(start_idx) = body.find(start) {
+        if let Some(end_rel) = body[start_idx..].find(end) {
+            let end_idx = start_idx + end_rel + end.len();
+            return format!("{}{}{}", &body[..start_idx], block, &body[end_idx..]);
+        }
+    }
+    if start == PROXY_SECTION_START {
+        if let Some(hnsw_idx) = body.find(HNSW_SECTION_START) {
+            return format!("{}{}\n\n{}", &body[..hnsw_idx], block, &body[hnsw_idx..]);
+        }
+    }
+    format!("{}\n\n{block}\n", body.trim_end())
+}
+
+fn render_proxy_section(data: &BenchmarkData, gate: &GateResult) -> Result<String, String> {
+    let run = data
+        .runs
+        .as_ref()
+        .and_then(|runs| runs.first())
+        .ok_or_else(|| "benchmark data has no runs".to_string())?;
+    let status = run.status.as_deref().unwrap_or("unknown");
+    let baseline_sha = data.baseline_sha.as_deref();
+    let failures = count_gate_failures(gate);
+    let p99 = format_latency_ms(run.k6.as_ref().and_then(|k| k.p99_ms));
+    let throughput = format_throughput(run.k6.as_ref().and_then(|k| k.req_per_s));
+
+    let mut lines = vec![
+        "### Proxy".to_string(),
+        String::new(),
+        format!(
+            "{} **{}** · p99 `{p99}` · {failures} regressions · `{throughput}`",
+            status_emoji(status),
+            status.to_uppercase()
+        ),
+        String::new(),
+        render_performance_summary(run, baseline_sha),
+    ];
+
+    if let Some(stage_section) = render_auth_proxy_stages(run.stages.as_ref()) {
+        lines.push(String::new());
+        lines.push(stage_section);
+    }
+
+    lines.push(String::new());
+    lines.push("<details>".to_string());
+    lines.push("<summary>More</summary>".to_string());
+    lines.push(String::new());
+    lines.push(render_data_quality_note());
+    lines.push(String::new());
+    lines.push(render_verdict_note(status, run.regression_vs_baseline_pct));
+    lines.push(String::new());
+    lines.push(render_details_block(run, gate, baseline_sha));
+    let micro = render_microbench_details(run);
+    if !micro.is_empty() {
+        lines.push(String::new());
+        lines.push(micro);
+    }
+    lines.push(String::new());
+    lines.push(render_env_details(run, baseline_sha));
+    lines.push(String::new());
+    lines.push("</details>".to_string());
+    Ok(lines.join("\n"))
+}
+
+fn render_hnsw_section(data: &HnswBenchmarkData) -> Result<String, String> {
     let run = data
         .runs
         .as_ref()
@@ -142,17 +211,10 @@ pub fn render_hnsw_pr_comment(data: &HnswBenchmarkData) -> Result<String, String
         .ok_or_else(|| "hnsw benchmark data has no runs".to_string())?;
 
     let status = run.status.as_deref().unwrap_or("unknown");
-    let short_sha = sanitize_sha(run.short_sha.as_deref().or(run.sha.as_deref()));
     let mean = run
         .mean_recall_at_10
-        .map(|v| format!("{:.4}", v))
+        .map(|v| format!("{:.3}", v))
         .unwrap_or_else(|| "n/a".into());
-    let status_badge = match status {
-        "pass" => "brightgreen",
-        "warn" => "yellow",
-        "fail" => "red",
-        _ => "lightgrey",
-    };
     let sizes = run
         .results
         .as_ref()
@@ -172,76 +234,34 @@ pub fn render_hnsw_pr_comment(data: &HnswBenchmarkData) -> Result<String, String
         .and_then(|v| v.as_bool())
         == Some(false);
 
-    let mut badge_lines = vec![
-        "<p align=\"center\">".to_string(),
-        "  <img src=\"https://img.shields.io/badge/Suite-Memory_HNSW-blue?style=for-the-badge&labelColor=2B2B2B\" alt=\"Suite: Memory HNSW\">".to_string(),
-        format!(
-            "  <img src=\"https://img.shields.io/badge/Status-{status}-{status_badge}?style=for-the-badge&labelColor=2B2B2B\" alt=\"Status: {status}\">"
-        ),
-        format!(
-            "  <img src=\"https://img.shields.io/badge/Mean_recall-{mean}-informational?style=for-the-badge&labelColor=2B2B2B\" alt=\"Mean recall\">"
-        ),
-        format!(
-            "  <img src=\"https://img.shields.io/badge/SHA-{short_sha}-lightgrey?style=for-the-badge&labelColor=2B2B2B\" alt=\"SHA\">"
-        ),
-    ];
-    if deferred_1m {
-        badge_lines.push(
-            "  <img src=\"https://img.shields.io/badge/1M-deferred_(smoke%2Ffast)-lightgrey?style=for-the-badge&labelColor=2B2B2B\" alt=\"1M deferred on smoke/fast\">".to_string(),
-        );
-    }
-    badge_lines.push("</p>".to_string());
-
     let headline = if deferred_1m && status == "pass" {
         format!(
-            "{} **PASS** · sizes `{sizes}` · mean recall@10 `{mean}` · 1M SLA checked on Sunday/full only",
+            "{} **PASS** · recall@10 `{mean}` · {sizes} · 1M Sunday-only",
             status_emoji("pass")
         )
     } else {
         format!(
-            "{} **{}** · sizes `{sizes}` · mean recall@10 `{mean}`",
+            "{} **{}** · recall@10 `{mean}` · {sizes}",
             status_emoji(status),
             status.to_uppercase()
         )
     };
 
     let mut lines = vec![
-        COMMENT_MARKER_HNSW.to_string(),
-        badge_lines.join("\n"),
-        String::new(),
-        "---".to_string(),
-        String::new(),
-        "### Memory HNSW suite".to_string(),
+        "### Memory HNSW".to_string(),
         String::new(),
         headline,
         String::new(),
-        markdown_table(
-            &["Field", "Value"],
-            &[
-                vec!["Suite".to_string(), "Memory HNSW".to_string()],
-                vec![
-                    "Published knobs".to_string(),
-                    "`ef=40` · `min_sim=0.70` · `iter=off` · `bulk`".to_string(),
-                ],
-                vec![
-                    "Site".to_string(),
-                    "[Overview](https://docs.ibexharness.com/benchmarks/memory) · [Latency](https://docs.ibexharness.com/benchmarks/memory/latency) · [History](https://docs.ibexharness.com/benchmarks/memory/history) · [Compare](https://docs.ibexharness.com/benchmarks/memory/compare)".to_string(),
-                ],
-            ],
-        ),
+        render_hnsw_cells_compact(run.results.as_deref().unwrap_or(&[])),
         String::new(),
-        "### Corpus cells".to_string(),
+        "<details>".to_string(),
+        "<summary>More</summary>".to_string(),
         String::new(),
-        render_hnsw_cells_table(run.results.as_deref().unwrap_or(&[])),
-        String::new(),
-        "_Suite: **Memory HNSW** (`IBEX_BOT_COMMENT_HNSW`). Separate sticky comment from **Proxy** (`IBEX_BOT_COMMENT`). Does not open a data PR on PRs._"
-            .to_string(),
+        "_Published knobs: `ef=40`, `min_sim=0.70`, `iter=off`, bulk index._".to_string(),
     ];
-    if let Some(url) = run.run_url.as_deref().filter(|u| !u.is_empty()) {
-        lines.push(String::new());
-        lines.push(format!("- [Memory Benchmarks workflow run]({url})"));
-    }
     append_gate_summary_note(&mut lines, run);
+    lines.push(String::new());
+    lines.push("</details>".to_string());
     Ok(lines.join("\n"))
 }
 
@@ -263,7 +283,7 @@ fn append_gate_summary_note(lines: &mut Vec<String>, run: &HnswBenchmarkRun) {
     let recall_ok = summary.get("recall_ok").and_then(|v| v.as_bool());
     let has_1m = summary.get("has_1m").and_then(|v| v.as_bool());
     lines.push(String::new());
-    lines.push("### Coverage".to_string());
+    lines.push("**Coverage**".to_string());
     lines.push(String::new());
     let mut rows = vec![vec![
         "Recall floor (≥98%)".to_string(),
@@ -344,6 +364,29 @@ pub fn render_hnsw_data_pr_body(
     lines.join("\n")
 }
 
+fn render_hnsw_cells_compact(results: &[HnswSizeResult]) -> String {
+    if results.is_empty() {
+        return "_No result cells in latest run._".to_string();
+    }
+    let rows: Vec<Vec<String>> = results
+        .iter()
+        .map(|r| {
+            vec![
+                r.corpus_size
+                    .map(format_corpus_size)
+                    .unwrap_or_else(|| "—".into()),
+                r.recall_at_10
+                    .map(|v| format!("{v:.3}"))
+                    .unwrap_or_else(|| "—".into()),
+                r.latency_ms_p95
+                    .map(|v| format!("{v:.1} ms"))
+                    .unwrap_or_else(|| "—".into()),
+            ]
+        })
+        .collect();
+    markdown_table(&["Size", "Recall@10", "p95"], &rows)
+}
+
 fn render_hnsw_cells_table(results: &[HnswSizeResult]) -> String {
     if results.is_empty() {
         return "_No result cells in latest run._".to_string();
@@ -398,39 +441,6 @@ fn render_compact_brand() -> String {
     )
 }
 
-fn render_proxy_badge_row(status: &str, gate: &GateResult, run: &BenchmarkRun) -> String {
-    let failures = count_gate_failures(gate);
-    let status_label = status.to_uppercase();
-    let status_color = match status {
-        "pass" => "brightgreen",
-        "regression" => "yellow",
-        _ => "red",
-    };
-    let regression_color = if failures == 0 { "green" } else { "red" };
-    let p99 = run
-        .k6
-        .as_ref()
-        .and_then(|k| k.p99_ms)
-        .map(|v| format!("{v:.2}ms"))
-        .unwrap_or_else(|| "n/a".to_string());
-
-    format!(
-        r#"<p align="center">
-  <img src="https://img.shields.io/badge/Suite-Proxy-blue?style=for-the-badge&labelColor=2B2B2B" alt="Suite: Proxy">
-  <a href="{DOCS_BASE}/{}">
-    <img src="https://img.shields.io/badge/Status-{status_label}-{status_color}?style=for-the-badge&labelColor=2B2B2B" alt="Status: {status_label}">
-  </a>
-  <img src="https://img.shields.io/badge/Regressions-{failures}-{regression_color}?style=for-the-badge&labelColor=2B2B2B" alt="Regressions: {failures}">
-  <img src="https://img.shields.io/badge/P99-{p99}-informational?style=for-the-badge&labelColor=2B2B2B" alt="P99 Latency">
-</p>"#,
-        resolve_short_sha(run)
-    )
-}
-
-fn render_proxy_site_links() -> String {
-    "**Site:** [Overview](https://docs.ibexharness.com/benchmarks) · [Latency](https://docs.ibexharness.com/benchmarks/latency) · [History](https://docs.ibexharness.com/benchmarks/history) · [Compare](https://docs.ibexharness.com/benchmarks/compare)".to_string()
-}
-
 fn render_auth_proxy_stages(stages: Option<&StageMetrics>) -> Option<String> {
     let stages = stages?;
     let rows = stage_p99_rows(stages);
@@ -439,9 +449,9 @@ fn render_auth_proxy_stages(stages: Option<&StageMetrics>) -> Option<String> {
     }
     let table = markdown_table_raw(&["Stage", "p99"], &rows);
     Some(format!(
-        "### Auth & proxy stages (synthetic)\n\n\
-         _Go microbenchmarks for Auth LRU / gRPC and proxy warm-path stages — not live traces. Use k6 p99 for SLA._\n\n\
-         {table}"
+        "<details>\n<summary>Auth & proxy stages (synthetic)</summary>\n\n\
+         _Go microbenchmarks — not live traces. k6 p99 is the SLA._\n\n\
+         {table}\n</details>"
     ))
 }
 
@@ -555,26 +565,20 @@ fn render_details_block(
     baseline_sha: Option<&str>,
 ) -> String {
     let mut lines = vec![
-        "<details>".to_string(),
-        "<summary><b>📊 Detailed breakdown</b></summary>".to_string(),
-        String::new(),
-        "### Load test (k6)".to_string(),
+        "**Load test (k6)**".to_string(),
         String::new(),
         render_k6_detail_table(run, gate),
         String::new(),
-        "### Regression analysis".to_string(),
+        "**Regression analysis**".to_string(),
         String::new(),
         render_gate_table(gate),
     ];
-
-    lines.push(String::new());
-    lines.push("</details>".to_string());
     if let Some(sha) = baseline_sha {
         let safe = sanitize_sha(Some(sha));
         if safe != "invalid" && safe != "unknown" {
             lines.push(String::new());
             lines.push(format!(
-                "_Baseline commit: [`{safe}`]({HARNESS_REPO}/commit/{safe})_"
+                "_Baseline: [`{safe}`]({HARNESS_REPO}/commit/{safe})_"
             ));
         }
     }
@@ -767,7 +771,7 @@ fn render_microbench_details(run: &BenchmarkRun) -> String {
     };
 
     format!(
-        "<details>\n<summary><b>🔬 Microbenchmarks (Go)</b></summary>\n\n{}\n</details>",
+        "**Microbenchmarks (Go)**\n\n{}",
         markdown_table_raw(
             &["Metric", "Value", "95% CI"],
             &[
@@ -804,7 +808,7 @@ fn render_env_details(run: &BenchmarkRun, baseline_sha: Option<&str>) -> String 
         .unwrap_or_else(|| "`main`".to_string());
 
     format!(
-        "<details>\n<summary><b>⚙️ Environment</b></summary>\n\n* **Go version:** {}\n* **Runner:** {}\n* **k6 version:** {}\n* **Baseline:** {}\n</details>",
+        "**Environment**\n\n* **Go version:** {}\n* **Runner:** {}\n* **k6 version:** {}\n* **Baseline:** {}",
         escape_cell(run.go_version.as_deref()),
         escape_cell(Some(&runner)),
         escape_cell(run.k6_version.as_deref()),

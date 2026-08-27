@@ -30,5 +30,5 @@ Link the related harness PR / issue when this change exists to support it
 ## Checklist
 
 - [ ] Lint / CI passes on this PR
-- [ ] Suite markers still correct (`IBEX_BOT_COMMENT` vs `IBEX_BOT_COMMENT_HNSW`)
+- [ ] Suite comments still use one sticky marker (`IBEX_BOT_COMMENT`; Proxy + Memory HNSW sections)
 - [ ] Proxy and HNSW publish paths remain isolated

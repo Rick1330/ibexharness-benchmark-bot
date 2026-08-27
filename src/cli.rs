@@ -12,7 +12,8 @@ use crate::model::{BenchmarkData, BenchmarkRun, GateResult, HnswBenchmarkData};
 use crate::publish;
 use crate::publish_hnsw;
 use crate::render::{
-    render_hnsw_pr_comment, render_pr_comment, COMMENT_MARKER, COMMENT_MARKER_HNSW,
+    merge_hnsw_into_comment, merge_proxy_into_comment, render_hnsw_pr_comment, render_pr_comment,
+    COMMENT_MARKER, COMMENT_MARKER_HNSW,
 };
 use crate::verify;
 
@@ -88,7 +89,7 @@ pub enum Commands {
         #[arg(long, env = "HNSW_BENCHMARK_DATA_PATH")]
         hnsw_benchmark_data: PathBuf,
     },
-    /// Render and post a Memory HNSW PR comment (separate sticky marker)
+    /// Render and post a Memory HNSW section on the shared sticky comment
     PostHnswPrComment {
         #[arg(long, env = "HNSW_BENCHMARK_DATA_PATH")]
         hnsw_benchmark_data: PathBuf,
@@ -172,10 +173,13 @@ pub async fn run(cli: Cli) -> Result<()> {
             github_repository,
             pr_number,
         } => {
-            let (body, data, gate) = render_comment_from_paths(&benchmark_data, &gate_result)?;
+            let data = read_json::<BenchmarkData>(&benchmark_data)?;
+            let gate = load_gate_result(&gate_result);
             let (owner, repo) = crate::github::split_repo(&github_repository)?;
             let repo_ref = RepoRef::new(owner, repo);
             let client = comment_client(&github_token).await?;
+            let existing = existing_sticky_body(&client, repo_ref, pr_number).await?;
+            let body = merge_proxy_into_comment(&existing, &data, &gate).map_err(bot_err)?;
             upsert_pr_comment(&client, repo_ref, pr_number, &body, COMMENT_MARKER).await?;
             post_commit_status(&client, repo_ref, &data, &gate).await?;
         }
@@ -191,11 +195,13 @@ pub async fn run(cli: Cli) -> Result<()> {
             github_repository,
             pr_number,
         } => {
-            let body = render_hnsw_comment_from_path(&hnsw_benchmark_data)?;
+            let data = read_json::<HnswBenchmarkData>(&hnsw_benchmark_data)?;
             let (owner, repo) = crate::github::split_repo(&github_repository)?;
             let repo_ref = RepoRef::new(owner, repo);
             let client = comment_client(&github_token).await?;
-            upsert_pr_comment(&client, repo_ref, pr_number, &body, COMMENT_MARKER_HNSW).await?;
+            let existing = existing_sticky_body(&client, repo_ref, pr_number).await?;
+            let body = merge_hnsw_into_comment(&existing, &data).map_err(bot_err)?;
+            upsert_pr_comment(&client, repo_ref, pr_number, &body, COMMENT_MARKER).await?;
         }
     }
     Ok(())
@@ -269,6 +275,31 @@ fn read_json<T: serde::de::DeserializeOwned>(path: &PathBuf) -> Result<T> {
     serde_json::from_slice(&bytes).map_err(|err| bot_err(format!("json decode failed: {err}")))
 }
 
+async fn existing_sticky_body(
+    client: &GitHubClient,
+    repo: RepoRef<'_>,
+    pr_number: i64,
+) -> Result<String> {
+    let issue = IssueRef {
+        repo,
+        number: pr_number,
+    };
+    let comments = client.list_issue_comments(issue).await?;
+    for marker in [COMMENT_MARKER, COMMENT_MARKER_HNSW] {
+        if let Some(existing) = comments
+            .iter()
+            .find(|comment| comment_has_marker(comment, marker))
+        {
+            return Ok(existing
+                .get("body")
+                .and_then(|body| body.as_str())
+                .unwrap_or("")
+                .to_string());
+        }
+    }
+    Ok(String::new())
+}
+
 async fn upsert_pr_comment(
     client: &GitHubClient,
     repo: RepoRef<'_>,
@@ -282,10 +313,15 @@ async fn upsert_pr_comment(
         number: pr_number,
     };
     let comments = client.list_issue_comments(issue).await?;
-    if let Some(existing) = comments
+    let existing = comments
         .iter()
-        .find(|comment| comment_has_marker(comment, marker))
-    {
+        .find(|comment| comment_has_marker(comment, COMMENT_MARKER))
+        .or_else(|| {
+            comments
+                .iter()
+                .find(|comment| comment_has_marker(comment, COMMENT_MARKER_HNSW))
+        });
+    if let Some(existing) = existing {
         let id = existing
             .get("id")
             .and_then(|value| value.as_i64())
