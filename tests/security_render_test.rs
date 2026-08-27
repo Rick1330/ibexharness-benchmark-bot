@@ -12,16 +12,17 @@ fn render_strips_phishing_gate_name() {
     )
     .unwrap();
     let gate = GateResult {
-        status: Some("pass".to_string()),
+        status: Some("fail".to_string()),
         regression_pct: Some(0.0),
         checks: Some(vec![GateCheck {
             name: Some("[evil](https://evil.example)".to_string()),
             value: Some(1.0),
             limit: Some(1.0),
-            ok: Some(true),
+            ok: Some(false),
         }]),
     };
     let body = render_pr_comment(&data, &gate).expect("render");
     assert!(!body.contains("evil.example"));
     assert!(body.contains("invalid"));
+    assert!(body.contains("<details open>"));
 }

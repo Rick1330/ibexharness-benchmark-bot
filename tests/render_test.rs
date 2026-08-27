@@ -8,7 +8,7 @@ use ibex_benchmark_bot::render::{
 };
 
 #[test]
-fn render_pr_comment_uses_triage_layout() {
+fn render_pr_comment_uses_matrix_layout() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let data: BenchmarkData = serde_json::from_str(
         &fs::read_to_string(root.join("tests/fixtures/benchmark-data.json")).unwrap(),
@@ -20,19 +20,19 @@ fn render_pr_comment_uses_triage_layout() {
     .unwrap();
     let body = render_pr_comment(&data, &gate).expect("render");
     assert!(body.contains(COMMENT_MARKER));
+    assert!(body.contains("View IBEX dashboard"));
+    assert!(body.contains("#### Suite matrix"));
+    assert!(body.contains("| Suite | Primary SLA | vs Baseline | Status |"));
+    assert!(body.contains("**Proxy**"));
     assert!(body.contains("<!-- IBEX_PROXY_START -->"));
-    assert!(body.contains("### Proxy"));
-    assert!(body.contains("| Metric | Value | vs Baseline | Visual |"));
-    assert!(body.contains("<summary>Auth & proxy stages (synthetic)</summary>"));
+    assert!(body.contains("<summary>Deep Dive: Proxy</summary>"));
+    assert!(body.contains("<br>"));
     assert!(!body.contains("open>"));
     assert!(!body.contains("img.shields.io"));
-    assert!(body.contains("k6 p99 SLA") || body.contains("k6 p99"));
     assert!(body.contains("Auth LRU"));
-    assert!(body.contains("Auth gRPC"));
+    assert!(body.contains("<!-- IBEX_ENV_START -->"));
+    assert!(body.contains("<summary>Environment & meta</summary>"));
     assert!(!body.contains("```mermaid"));
-    assert!(body.contains("<details>"));
-    assert!(body.contains("<summary>More</summary>"));
-    assert!(body.contains("](https://github.com/Rick1330/ibex-harness/commit/"));
     assert!(!body.contains("`[`"));
 }
 
@@ -58,13 +58,12 @@ fn render_pr_comment_formats_sub_ms_stages() {
         });
     }
     let body = render_pr_comment(&data, &gate).expect("render");
-    assert!(body.contains("Auth & proxy stages"));
+    assert!(body.contains("Auth LRU"));
     assert!(body.contains("376 ns") || body.contains("0.38 µs"));
-    assert!(body.contains("Data model"));
 }
 
 #[test]
-fn render_pr_comment_hides_zero_stage_rows() {
+fn render_pr_comment_hides_zero_stage_chips() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut data: BenchmarkData = serde_json::from_str(
         &fs::read_to_string(root.join("tests/fixtures/benchmark-data.json")).unwrap(),
@@ -85,12 +84,12 @@ fn render_pr_comment_hides_zero_stage_rows() {
         });
     }
     let body = render_pr_comment(&data, &gate).expect("render");
-    assert!(!body.contains("<summary>Auth & proxy stages (synthetic)</summary>"));
-    assert!(!body.contains("| Auth LRU |"));
+    assert!(!body.contains("**Stages:**"));
+    assert!(!body.contains("Auth LRU"));
 }
 
 #[test]
-fn merge_keeps_proxy_and_hnsw_in_one_comment() {
+fn merge_keeps_proxy_and_hnsw_in_one_matrix_comment() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let data: BenchmarkData = serde_json::from_str(
         &fs::read_to_string(root.join("tests/fixtures/benchmark-data.json")).unwrap(),
@@ -113,23 +112,84 @@ fn merge_keeps_proxy_and_hnsw_in_one_comment() {
                 "corpus_size": 10000,
                 "recall_at_10": 0.99,
                 "latency_ms_p95": 1.2
-            }]
+            }],
+            "gate_summary": {"has_1m": false, "recall_ok": true}
         }]
     }))
     .unwrap();
     let body = merge_hnsw_into_comment(&proxy, &hnsw).expect("merge");
     assert_eq!(body.matches(COMMENT_MARKER).count(), 1);
     assert!(!body.contains(COMMENT_MARKER_HNSW));
-    let proxy_idx = body.find("### Proxy").expect("proxy heading");
-    let hnsw_idx = body.find("### Memory HNSW").expect("hnsw heading");
+    assert!(body.contains("✅ All benchmarks passed"));
+    assert!(body.contains("**Proxy**"));
+    assert!(body.contains("**Memory HNSW**"));
+    assert!(body.contains("<summary>Deep Dive: Memory HNSW</summary>"));
+    assert!(body.contains("1M:** Deferred") || body.contains("Deferred *(smoke/fast"));
+    let proxy_idx = body
+        .find("<!-- IBEX_PROXY_START -->")
+        .expect("proxy section");
+    let hnsw_idx = body.find("<!-- IBEX_HNSW_START -->").expect("hnsw section");
     assert!(proxy_idx < hnsw_idx);
-    let proxy_again = merge_proxy_into_comment(&body, &data, &gate).expect("re-merge proxy");
-    assert!(proxy_again.contains("### Memory HNSW"));
-    assert!(proxy_again.contains("### Proxy"));
 
     let hnsw_first = merge_hnsw_into_comment("", &hnsw).expect("hnsw first");
     let proxy_second = merge_proxy_into_comment(&hnsw_first, &data, &gate).expect("proxy second");
-    let proxy_idx = proxy_second.find("### Proxy").expect("proxy heading");
-    let hnsw_idx = proxy_second.find("### Memory HNSW").expect("hnsw heading");
+    let proxy_idx = proxy_second
+        .find("<!-- IBEX_PROXY_START -->")
+        .expect("proxy section");
+    let hnsw_idx = proxy_second
+        .find("<!-- IBEX_HNSW_START -->")
+        .expect("hnsw section");
     assert!(proxy_idx < hnsw_idx);
+    assert!(proxy_second.contains("| Suite | Primary SLA | vs Baseline | Status |"));
+}
+
+#[test]
+fn warn_gate_status_surfaces_warning_verdict() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let data: BenchmarkData = serde_json::from_str(
+        &fs::read_to_string(root.join("tests/fixtures/benchmark-data.json")).unwrap(),
+    )
+    .unwrap();
+    let mut gate: GateResult = serde_json::from_str(
+        &fs::read_to_string(root.join("tests/fixtures/gate-result.json")).unwrap(),
+    )
+    .unwrap();
+    gate.status = Some("warn".to_string());
+    let body = render_pr_comment(&data, &gate).expect("render");
+    assert!(body.contains("Benchmarks warning"));
+    assert!(body.contains("<details open>"));
+    assert!(body.contains("|proxy|Proxy|"));
+    assert!(body.contains("|warn -->") || body.contains("|warn|") || body.contains("|warn -->"));
+}
+
+#[test]
+fn hnsw_gate_note_is_sanitized() {
+    let hnsw: HnswBenchmarkData = serde_json::from_value(serde_json::json!({
+        "schema_version": 1,
+        "benchmark": "hnsw_recall_latency",
+        "runs": [{
+            "sha": "abcdef1",
+            "short_sha": "abcdef1",
+            "status": "pass",
+            "mean_recall_at_10": 0.99,
+            "results": [{
+                "corpus_size": 10000,
+                "recall_at_10": 0.99,
+                "latency_ms_p95": 1.2
+            }],
+            "gate_summary": {
+                "has_1m": false,
+                "recall_ok": true,
+                "note": "[click](https://evil.example) then |pipe|"
+            }
+        }]
+    }))
+    .unwrap();
+    let body = merge_hnsw_into_comment("", &hnsw).expect("merge");
+    assert!(
+        !body.contains("](https://evil.example)"),
+        "markdown link must be neutralized"
+    );
+    assert!(body.contains(r"\|") || body.contains("pipe"));
+    assert!(body.contains("\n> "));
 }

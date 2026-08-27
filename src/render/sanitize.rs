@@ -10,6 +10,9 @@ pub const PROXY_SECTION_START: &str = "<!-- IBEX_PROXY_START -->";
 pub const PROXY_SECTION_END: &str = "<!-- IBEX_PROXY_END -->";
 pub const HNSW_SECTION_START: &str = "<!-- IBEX_HNSW_START -->";
 pub const HNSW_SECTION_END: &str = "<!-- IBEX_HNSW_END -->";
+pub const ENV_SECTION_START: &str = "<!-- IBEX_ENV_START -->";
+pub const ENV_SECTION_END: &str = "<!-- IBEX_ENV_END -->";
+pub const SUITE_META_PREFIX: &str = "<!-- IBEX_SUITE_META|";
 
 pub fn sanitize_sha(value: Option<&str>) -> String {
     let Some(value) = value else {
@@ -158,43 +161,6 @@ pub fn format_throughput(req_per_s: Option<f64>) -> String {
         }
         _ => "—".to_string(),
     }
-}
-
-pub fn visual_bar_filled(filled: usize, width: usize, label: &str) -> String {
-    let filled = filled.min(width);
-    format!(
-        "`{}{} ` {}",
-        "█".repeat(filled),
-        "░".repeat(width - filled),
-        label
-    )
-}
-
-pub fn latency_visual_bar(p99_ms: Option<f64>, sla_ms: f64, width: usize) -> String {
-    let p99 = p99_ms.unwrap_or(sla_ms);
-    let ratio = (p99 / sla_ms).clamp(0.0, 1.0);
-    let filled = ((1.0 - ratio) * width as f64).round() as usize;
-    let label = if ratio < 0.25 {
-        "(Fast)"
-    } else if ratio < 0.75 {
-        "(OK)"
-    } else {
-        "(Slow)"
-    };
-    visual_bar_filled(filled, width, label)
-}
-
-pub fn throughput_visual_bar(req_per_s: Option<f64>, scale: f64, width: usize) -> String {
-    let rps = req_per_s.unwrap_or(0.0);
-    let filled = ((rps / scale) * width as f64).round() as usize;
-    let label = if rps >= scale * 0.8 {
-        "(Max)"
-    } else if rps >= scale * 0.4 {
-        "(Good)"
-    } else {
-        "(Low)"
-    };
-    visual_bar_filled(filled.min(width), width, label)
 }
 
 pub fn status_emoji(status: &str) -> &'static str {
