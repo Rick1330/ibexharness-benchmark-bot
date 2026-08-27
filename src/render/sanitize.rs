@@ -1,10 +1,15 @@
 use regex::Regex;
 
-/// HTML anchor used to find and update the bot's sticky proxy PR comment.
+/// HTML anchor used to find and update the single sticky benchmark PR comment.
 pub const COMMENT_MARKER: &str = "<!-- IBEX_BOT_COMMENT -->";
 
-/// Sticky PR comment marker for Memory HNSW (separate from proxy).
+/// Legacy Memory-only sticky marker. New posts use [`COMMENT_MARKER`] only.
 pub const COMMENT_MARKER_HNSW: &str = "<!-- IBEX_BOT_COMMENT_HNSW -->";
+
+pub const PROXY_SECTION_START: &str = "<!-- IBEX_PROXY_START -->";
+pub const PROXY_SECTION_END: &str = "<!-- IBEX_PROXY_END -->";
+pub const HNSW_SECTION_START: &str = "<!-- IBEX_HNSW_START -->";
+pub const HNSW_SECTION_END: &str = "<!-- IBEX_HNSW_END -->";
 
 pub fn sanitize_sha(value: Option<&str>) -> String {
     let Some(value) = value else {

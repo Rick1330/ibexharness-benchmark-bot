@@ -52,4 +52,5 @@ jobs:
               --notes "Pinned bot binary for harness BENCHMARK_BOT_SHA=${sha}." \
               --target "$sha"
           fi
-          gh release upload "$TAG" ibex-benchmark-bot-linux-amd64 --clobber
+          sha256sum ibex-benchmark-bot-linux-amd64 > ibex-benchmark-bot-linux-amd64.sha256
+          gh release upload "$TAG" ibex-benchmark-bot-linux-amd64 ibex-benchmark-bot-linux-amd64.sha256 --clobber

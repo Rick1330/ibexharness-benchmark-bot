@@ -17,9 +17,9 @@ GitHub App (Rust) · publishes benchmark data to <a href="https://github.com/Ric
 | `publish` | Validate proxy artifact and open data PR (`benchmark-data.json` + badge) |
 | `verify-hnsw-dispatch` | Re-verify Memory Benchmarks dispatch |
 | `publish-hnsw` | Validate HNSW artifact and open data PR (`hnsw-benchmark-data.json` only) |
-| `post-pr-comment` | Post sticky **Proxy** suite comment (`IBEX_BOT_COMMENT`) |
+| `post-pr-comment` | Upsert **Proxy** section of the shared sticky comment (`IBEX_BOT_COMMENT`) |
 | `render-pr-comment` | Render Proxy comment to stdout |
-| `post-hnsw-pr-comment` | Post sticky **Memory HNSW** suite comment (`IBEX_BOT_COMMENT_HNSW`; 1M deferred ≠ WARN on smoke/fast) |
+| `post-hnsw-pr-comment` | Upsert **Memory HNSW** section of the same sticky comment (1M deferred ≠ WARN on smoke/fast) |
 | `render-hnsw-pr-comment` | Render Memory HNSW comment to stdout |
 
 [Setup](docs/APP_SETUP.md) · [Runbook](docs/RUNBOOK.md) · [Threat model](docs/THREAT_MODEL.md)
@@ -36,4 +36,4 @@ cargo fmt --all && cargo clippy --all-targets --all-features -- -D warnings && c
 ```
 
 Pin `BOT_RELEASE_SHA` and harness `BENCHMARK_BOT_SHA` to the same reviewed commit on `main`.
-Set harness `BENCHMARK_BOT_RELEASE_TAG` to `bot-<7-char-sha>` only after **Release binary** uploads `ibex-benchmark-bot-linux-amd64` for that tag.
+Set harness `BENCHMARK_BOT_RELEASE_TAG` to `bot-<7-char-sha>` only after **Release binary** uploads `ibex-benchmark-bot-linux-amd64` and `ibex-benchmark-bot-linux-amd64.sha256` for that tag. Pin the digest in harness `.github/actions/setup-benchmark-bot/ibex-benchmark-bot-linux-amd64.sha256`.
