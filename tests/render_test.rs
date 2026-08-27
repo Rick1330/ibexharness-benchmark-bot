@@ -125,7 +125,9 @@ fn merge_keeps_proxy_and_hnsw_in_one_matrix_comment() {
     assert!(body.contains("**Memory HNSW**"));
     assert!(body.contains("<summary>Deep Dive: Memory HNSW</summary>"));
     assert!(body.contains("1M:** Deferred") || body.contains("Deferred *(smoke/fast"));
-    let proxy_idx = body.find("<!-- IBEX_PROXY_START -->").expect("proxy section");
+    let proxy_idx = body
+        .find("<!-- IBEX_PROXY_START -->")
+        .expect("proxy section");
     let hnsw_idx = body.find("<!-- IBEX_HNSW_START -->").expect("hnsw section");
     assert!(proxy_idx < hnsw_idx);
 
