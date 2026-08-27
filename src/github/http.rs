@@ -36,6 +36,12 @@ impl HttpClient {
         self.json_response(Method::POST, path, body).await
     }
 
+    /// POST JSON and return the raw response (caller inspects status).
+    pub(crate) async fn post_json_raw(&self, path: &str, body: Value) -> Result<Response> {
+        self.send_unchecked(Method::POST, path, github_json_accept(), Some(body))
+            .await
+    }
+
     pub(crate) async fn put_json(&self, path: &str, body: Value) -> Result<Value> {
         self.json_response(Method::PUT, path, body).await
     }
@@ -74,23 +80,35 @@ impl HttpClient {
         accept: &str,
         body: Option<Value>,
     ) -> Result<Response> {
+        let response = self
+            .send_unchecked(method.clone(), path, accept, body)
+            .await?;
+        if !response.status().is_success() {
+            return Err(bot_err(format!(
+                "{method} {path} failed: {}",
+                response.text().await.unwrap_or_default()
+            )));
+        }
+        Ok(response)
+    }
+
+    async fn send_unchecked(
+        &self,
+        method: Method,
+        path: &str,
+        accept: &str,
+        body: Option<Value>,
+    ) -> Result<Response> {
         let label = method.clone();
         let url = format!("{API_BASE}{path}");
         let mut request = self.authorized(self.http.request(method, url), accept);
         if let Some(payload) = body {
             request = request.json(&payload);
         }
-        let response = request
+        request
             .send()
             .await
-            .map_err(|err| bot_err(format!("{label} {path} failed: {err}")))?;
-        if !response.status().is_success() {
-            return Err(bot_err(format!(
-                "{label} {path} failed: {}",
-                response.text().await.unwrap_or_default()
-            )));
-        }
-        Ok(response)
+            .map_err(|err| bot_err(format!("{label} {path} failed: {err}")))
     }
 
     fn authorized(&self, builder: RequestBuilder, accept: &str) -> RequestBuilder {

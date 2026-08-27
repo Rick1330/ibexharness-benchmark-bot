@@ -191,8 +191,9 @@ impl GitHubClient {
 
     pub async fn create_branch(&self, req: CreateBranch<'_>) -> Result<()> {
         let path = format!("{}/git/refs", req.repo.base_path());
-        self.http
-            .post_json(
+        let response = self
+            .http
+            .post_json_raw(
                 &path,
                 serde_json::json!({
                     "ref": format!("refs/heads/{}", req.branch),
@@ -200,7 +201,20 @@ impl GitHubClient {
                 }),
             )
             .await?;
-        Ok(())
+        let status = response.status();
+        if status.is_success() {
+            return Ok(());
+        }
+        let body = response.text().await.unwrap_or_default();
+        // Concurrent publishers race on the shared data branch; treat "already exists" as success.
+        if status == StatusCode::UNPROCESSABLE_ENTITY
+            && body.to_ascii_lowercase().contains("already exists")
+        {
+            return Ok(());
+        }
+        Err(bot_err(format!(
+            "POST {path} failed: status {status}: {body}"
+        )))
     }
 
     pub async fn get_file_bytes(&self, req: RepoPathRef<'_>) -> Result<Option<Vec<u8>>> {

@@ -223,7 +223,7 @@ fn render_proxy_data_section(
          synthetic Go microbenchmarks._"
             .to_string(),
     ];
-    if let Some(url) = run_url {
+    if let Some(url) = run_url.or(run.and_then(|r| r.run_url.as_deref())) {
         lines.push(String::new());
         lines.push(format!("- [Harness Benchmarks workflow run]({url})"));
     }
@@ -698,7 +698,7 @@ fn render_hnsw_data_section(
          `iterative_scan=off`, bulk index build)._"
             .to_string(),
     ];
-    if let Some(url) = run_url {
+    if let Some(url) = run_url.or(latest.and_then(|run| run.run_url.as_deref())) {
         lines.push(String::new());
         lines.push(format!("- [Harness Memory Benchmarks workflow run]({url})"));
     }

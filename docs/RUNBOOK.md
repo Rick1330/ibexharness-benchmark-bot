@@ -146,6 +146,8 @@ After enabling the bot:
 
 1. Confirm every matching harness PR receives a **proxy** quality comment (no data PR).
 2. Confirm Memory Benchmarks PRs update the **same** sticky comment (Memory HNSW section; no second thread).
-3. Confirm Sunday cron (or one manual main `workflow_dispatch`) produces **one** bot data PR per suite that ran.
-4. Confirm `/benchmarks` and `/benchmarks/memory` show new runs after those PRs merge.
+3. Confirm Sunday cron (or one manual main `workflow_dispatch`) produces **one** shared data PR on
+   `chore/bench-data-publish`. When **both** Proxy and Memory HNSW publish before that PR merges,
+   both suite files land in that single PR (not one PR per suite).
+4. Confirm `/benchmarks` and `/benchmarks/memory` show new runs after that PR merges.
 5. Confirm PR comments use the pinned Rust renderer (rich format).

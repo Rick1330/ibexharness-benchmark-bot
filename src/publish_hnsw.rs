@@ -255,6 +255,16 @@ mod tests {
     }
 
     #[test]
+    fn renders_persisted_run_url_when_arg_absent() {
+        let mut data = data_with_results(None);
+        if let Some(run) = data.runs.as_mut().and_then(|runs| runs.first_mut()) {
+            run.run_url = Some("https://example.test/persisted/9".into());
+        }
+        let body = render_hnsw_data_pr_body(&data, None, 9);
+        assert!(body.contains("https://example.test/persisted/9"));
+    }
+
+    #[test]
     fn renders_explicit_fallbacks_for_missing_cell_data() {
         let data = data_with_results(Some(vec![HnswSizeResult::default()]));
         let body = render_hnsw_data_pr_body(&data, None, 7);
