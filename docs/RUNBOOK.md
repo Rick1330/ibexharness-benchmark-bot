@@ -8,8 +8,8 @@
 | --- | --- | --- | --- |
 | **Proxy PR quality comment** | ibex-harness `Benchmarks` on `pull_request` | Every matching PR (**smoke** profile) | App upserts the **Proxy** row/deep-dive of the shared sticky comment (`IBEX_BOT_COMMENT`): global verdict + suite matrix + collapsed Proxy deep dive + environment. **Never** opens a data PR. |
 | **Memory HNSW PR comment** | ibex-harness `Memory Benchmarks` on `pull_request` | Every matching PR (**smoke** = 10K) | App upserts the **Memory HNSW** row/deep-dive of the **same** sticky comment. Missing 1M on smoke/fast is informational, not WARN. **Never** opens a data PR. |
-| **Daily proxy data publish** | ibex-harness `notify-benchmark-bot` → this repo `Publish benchmark data` | Daily 04:00 UTC + main push collects; Sunday uses `full` profile | Bot opens a `chore(bench): …` PR updating `benchmark-data.json` + `badge.svg`. |
-| **HNSW data publish** | ibex-harness `Memory Benchmarks` → this repo `Publish HNSW benchmark data` | Sunday 05:00 UTC + main push / dispatch | Bot opens a data PR updating **only** `hnsw-benchmark-data.json` (never proxy files). |
+| **Daily proxy data publish** | ibex-harness `notify-benchmark-bot` → this repo `Publish benchmark data` | Daily 04:00 UTC + main push collects; Sunday uses `full` profile | Bot commits `benchmark-data.json` + `badge.svg` onto shared branch `chore/bench-data-publish` and **opens or updates one** data PR. |
+| **HNSW data publish** | ibex-harness `Memory Benchmarks` → this repo `Publish HNSW benchmark data` | Sunday 05:00 UTC + main push / dispatch | Bot commits **only** `hnsw-benchmark-data.json` onto the **same** shared branch / PR (never rewrites proxy files). |
 
 Suite comments share one sticky thread. Each suite updates only its section (`IBEX_PROXY_*` / `IBEX_HNSW_*`).
 
@@ -17,14 +17,15 @@ Suite comments share one sticky thread. Each suite updates only its section (`IB
 
 1. ibex-harness **Benchmarks** completes on `main` via **schedule**, **workflow_dispatch**, or a path-triggered **push**.
 2. `notify-benchmark-bot` sends `repository_dispatch` (`benchmark_main_complete`).
-3. **publish-benchmark-data** checks out `vars.BOT_RELEASE_SHA`, verifies the harness run, validates the artifact, and commits JSON+badge in **one** Git Data API commit (DCO trailer included).
-4. Maintainer merges the data PR after harness CI is green.
+3. **publish-benchmark-data** checks out `vars.BOT_RELEASE_SHA`, verifies the harness run, validates the artifact, and commits JSON+badge in **one** Git Data API commit (DCO trailer included) onto `chore/bench-data-publish`.
+4. If an open data PR already exists on that branch, the bot **updates** title/body/labels; otherwise it opens one PR. When HNSW publishes later, it amends the same PR.
+5. Maintainer merges the data PR after harness CI is green.
 
 ### HNSW publish flow
 
 1. ibex-harness **Memory Benchmarks** (`.github/workflows/memory-benchmark.yml`) completes on `main`.
 2. `notify-hnsw-benchmark-bot` sends `repository_dispatch` (`memory_benchmark_main_complete`).
-3. **publish-hnsw-benchmark-data** verifies workflow name/path (`Memory Benchmarks` / `.github/workflows/memory-benchmark.yml`), downloads artifact `hnsw-benchmark-data`, validates, and commits `web/public/benchmarks/hnsw-benchmark-data.json` only.
+3. **publish-hnsw-benchmark-data** verifies workflow name/path (`Memory Benchmarks` / `.github/workflows/memory-benchmark.yml`), downloads artifact `hnsw-benchmark-data`, validates, and commits `web/public/benchmarks/hnsw-benchmark-data.json` only onto `chore/bench-data-publish` (shared with proxy).
 4. Result cells may include methodology knobs (`ef_search`, `min_similarity`, `iterative_scan`, `index_build_mode`, plan/buffer stats). Validation requires core latency/recall fields; optional knobs are range-checked when present.
 5. Maintainer merges; pin `BOT_RELEASE_SHA` / harness `BENCHMARK_BOT_SHA` together after bot code merges.
 
@@ -145,6 +146,8 @@ After enabling the bot:
 
 1. Confirm every matching harness PR receives a **proxy** quality comment (no data PR).
 2. Confirm Memory Benchmarks PRs update the **same** sticky comment (Memory HNSW section; no second thread).
-3. Confirm Sunday cron (or one manual main `workflow_dispatch`) produces **one** bot data PR per suite that ran.
-4. Confirm `/benchmarks` and `/benchmarks/memory` show new runs after those PRs merge.
+3. Confirm Sunday cron (or one manual main `workflow_dispatch`) produces **one** shared data PR on
+   `chore/bench-data-publish`. When **both** Proxy and Memory HNSW publish before that PR merges,
+   both suite files land in that single PR (not one PR per suite).
+4. Confirm `/benchmarks` and `/benchmarks/memory` show new runs after that PR merges.
 5. Confirm PR comments use the pinned Rust renderer (rich format).

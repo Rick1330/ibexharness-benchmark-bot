@@ -1,16 +1,14 @@
 use std::fs;
 
-use serde_json::Value;
-
 use crate::artifact::{extract_artifact_zip, validate_badge_svg};
-use crate::config::{BADGE_PATH, BENCHMARK_DATA_LABEL, BENCHMARK_DATA_PATH};
+use crate::config::{BADGE_PATH, BENCHMARK_DATA_PATH, DATA_PR_BRANCH};
 use crate::error::{bot_err, Result};
 use crate::github::{
     bot_commit_message, split_repo, CommitFile, CommitFilesRequest, CreateBranch, GitHubClient,
-    IssueRef, LabeledPrSearch, OpenPullRequest, RepoPathRef, RepoRef,
+    RepoPathRef, RepoRef,
 };
 use crate::model::{BenchmarkData, DispatchPayload};
-use crate::render::render_data_pr_body;
+use crate::publish_shared::{proxy_head_already_on_branch, upsert_combined_data_pr, UpsertDataPr};
 use crate::validate::{
     cross_check_artifact_run, max_published_run_number, published_sha_exists, validate_file,
     validate_payload,
@@ -32,24 +30,26 @@ pub async fn publish_benchmark_data(
     let run = verify::verify_dispatch(client, repo_full, payload).await?;
     let (owner, repo) = split_repo(repo_full)?;
     let repo_ref = RepoRef::new(owner, repo);
-    let branch = format!("chore/bench-data-{}", payload.run_number);
+    let branch = DATA_PR_BRANCH.to_string();
     let head_sha = run
         .head_sha
         .as_deref()
         .ok_or_else(|| bot_err("verified run missing head_sha".to_string()))?;
 
-    if let Some(existing) = find_existing_publish_pr(client, repo_ref, &branch, head_sha).await? {
-        return Ok(PublishResult {
-            skipped: true,
-            pr_url: existing
-                .get("html_url")
-                .and_then(|value| value.as_str())
-                .map(str::to_owned),
-            branch,
-        });
-    }
-
     ensure_not_replay(client, repo_ref, payload, head_sha).await?;
+
+    if let Some(existing) = client.find_open_pr(repo_ref, DATA_PR_BRANCH).await? {
+        if proxy_head_already_on_branch(client, repo_ref, head_sha).await? {
+            return Ok(PublishResult {
+                skipped: true,
+                pr_url: existing
+                    .get("html_url")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_owned),
+                branch,
+            });
+        }
+    }
 
     let zip = client
         .download_artifact_zip(repo_ref, payload.run_id)
@@ -76,18 +76,18 @@ pub async fn publish_benchmark_data(
     }
 
     let main_sha = client.main_sha(repo_ref).await?;
-    if !client.ref_exists(repo_ref, &branch).await? {
+    if !client.ref_exists(repo_ref, DATA_PR_BRANCH).await? {
         client
             .create_branch(CreateBranch {
                 repo: repo_ref,
-                branch: &branch,
+                branch: DATA_PR_BRANCH,
                 sha: &main_sha,
             })
             .await?;
     }
 
     let subject = format!(
-        "chore(bench): benchmark data update (run #{})",
+        "chore(bench): proxy benchmark data update (run #{})",
         payload.run_number
     );
     let message = bot_commit_message(&subject);
@@ -95,7 +95,7 @@ pub async fn publish_benchmark_data(
         .commit_files(
             repo_ref,
             CommitFilesRequest {
-                branch: &branch,
+                branch: DATA_PR_BRANCH,
                 message: &message,
                 files: &[
                     CommitFile {
@@ -111,34 +111,15 @@ pub async fn publish_benchmark_data(
         )
         .await?;
 
-    let body = render_data_pr_body(
-        &benchmark_data,
-        run.html_url.as_deref(),
-        Some(payload.run_number),
-    );
-    let title = format!(
-        "chore(bench): benchmark data update (run #{})",
-        payload.run_number
-    );
-    let pr = client
-        .open_pull_request(OpenPullRequest {
-            repo: repo_ref,
-            branch: &branch,
-            title: &title,
-            body: &body,
-        })
-        .await?;
-    if let Some(number) = pr.get("number").and_then(Value::as_i64) {
-        client
-            .add_labels(
-                IssueRef {
-                    repo: repo_ref,
-                    number,
-                },
-                &["automated", BENCHMARK_DATA_LABEL],
-            )
-            .await?;
-    }
+    let pr = upsert_combined_data_pr(UpsertDataPr {
+        client,
+        repo: repo_ref,
+        proxy_run_url: run.html_url.as_deref(),
+        proxy_run_number: Some(payload.run_number),
+        hnsw_run_url: None,
+        hnsw_run_number: None,
+    })
+    .await?;
 
     Ok(PublishResult {
         skipped: false,
@@ -180,22 +161,4 @@ async fn ensure_not_replay(
         }
     }
     Ok(())
-}
-
-async fn find_existing_publish_pr(
-    client: &GitHubClient,
-    repo: RepoRef<'_>,
-    branch: &str,
-    head_sha: &str,
-) -> Result<Option<Value>> {
-    if let Some(existing) = client.find_open_pr(repo, branch).await? {
-        return Ok(Some(existing));
-    }
-    client
-        .find_labeled_pr_with_sha(LabeledPrSearch {
-            repo,
-            label: BENCHMARK_DATA_LABEL,
-            head_sha,
-        })
-        .await
 }

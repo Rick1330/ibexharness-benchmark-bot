@@ -31,4 +31,5 @@ Link the related harness PR / issue when this change exists to support it
 
 - [ ] Lint / CI passes on this PR
 - [ ] Suite comments still use one sticky marker (`IBEX_BOT_COMMENT`; Proxy + Memory HNSW sections)
-- [ ] Proxy and HNSW publish paths remain isolated
+- [ ] Data publishes upsert one shared PR (`chore/bench-data-publish`); suite JSON files stay separate
+- [ ] Proxy and HNSW artifact verify paths remain isolated

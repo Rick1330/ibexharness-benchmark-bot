@@ -58,7 +58,7 @@ Trusted:   Actions API run record, validated artifact JSON, App committer identi
 
 **Risk:** Duplicate or stale data PRs for same benchmark run.
 
-**Mitigation:** Idempotency checks open PR by branch `chore/bench-data-{run_number}` and label `benchmark-data` with matching SHA in body. `ensure_not_replay` rejects `run_number` not newer than published max or duplicate `head_sha` on main. Workflow concurrency cancels in-progress duplicate jobs.
+**Mitigation:** Idempotency checks open PR by shared branch `chore/bench-data-publish` and suite labels (`benchmark-data` / `hnsw-benchmark-data`). Re-dispatch of the same suite SHA already on the branch is skipped. `ensure_not_replay` rejects `run_number` not newer than published max or duplicate `head_sha` on main. Workflow concurrency cancels in-progress duplicate jobs.
 
 ### T8: github.actor / author-email bypass
 

@@ -14,9 +14,9 @@ GitHub App (Rust) · publishes benchmark data to <a href="https://github.com/Ric
 | Command | Purpose |
 | --- | --- |
 | `verify-dispatch` | Re-verify proxy Benchmarks dispatch via Actions API |
-| `publish` | Validate proxy artifact and open data PR (`benchmark-data.json` + badge) |
+| `publish` | Validate proxy artifact; commit onto shared `chore/bench-data-publish`; open/update one data PR |
 | `verify-hnsw-dispatch` | Re-verify Memory Benchmarks dispatch |
-| `publish-hnsw` | Validate HNSW artifact and open data PR (`hnsw-benchmark-data.json` only) |
+| `publish-hnsw` | Validate HNSW artifact; commit onto the **same** shared data PR (HNSW JSON only) |
 | `post-pr-comment` | Upsert **Proxy** suite into the shared sticky comment (`IBEX_BOT_COMMENT` matrix + deep dive) |
 | `render-pr-comment` | Render Proxy sticky comment to stdout |
 | `post-hnsw-pr-comment` | Upsert **Memory HNSW** suite into the same sticky comment |
