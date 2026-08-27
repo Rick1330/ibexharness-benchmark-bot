@@ -207,6 +207,7 @@ fn global_verdict(metas: &[SuiteMeta]) -> (String, String) {
     }
     let has_fail = metas.iter().any(|m| m.status == "fail");
     let has_regression = metas.iter().any(|m| m.status == "regression");
+    let has_warn = metas.iter().any(|m| m.status == "warn");
     let all_pass = metas.iter().all(|m| m.status == "pass");
 
     if has_fail {
@@ -220,6 +221,13 @@ fn global_verdict(metas: &[SuiteMeta]) -> (String, String) {
         return (
             "⚠️ Benchmarks regressed".to_string(),
             "A suite crossed the regression threshold. Review the delta before merging."
+                .to_string(),
+        );
+    }
+    if has_warn {
+        return (
+            "⚠️ Benchmarks warning".to_string(),
+            "At least one suite reported a warning. Expand the deep dive before merging."
                 .to_string(),
         );
     }
@@ -285,6 +293,16 @@ fn scrub_meta(value: &str) -> String {
         .to_string()
 }
 
+fn normalize_status(raw: &str) -> &'static str {
+    match raw {
+        "pass" => "pass",
+        "fail" => "fail",
+        "warn" => "warn",
+        "regression" => "regression",
+        _ => "unknown",
+    }
+}
+
 fn parse_suite_metas(body: &str) -> Vec<SuiteMeta> {
     let mut metas = Vec::new();
     for line in body.lines() {
@@ -304,7 +322,7 @@ fn parse_suite_metas(body: &str) -> Vec<SuiteMeta> {
             name: parts[1].to_string(),
             primary: parts[2].to_string(),
             delta: parts[3].to_string(),
-            status: parts[4].to_string(),
+            status: normalize_status(parts[4]).to_string(),
         });
     }
     metas.sort_by_key(|m| suite_sort_key(&m.id));
@@ -314,7 +332,7 @@ fn parse_suite_metas(body: &str) -> Vec<SuiteMeta> {
 
 fn details_open_attr(status: &str) -> &'static str {
     match status {
-        "fail" | "regression" => " open",
+        "fail" | "regression" | "warn" => " open",
         _ => "",
     }
 }
@@ -325,11 +343,14 @@ fn render_proxy_section(data: &BenchmarkData, gate: &GateResult) -> Result<Strin
         .as_ref()
         .and_then(|runs| runs.first())
         .ok_or_else(|| "benchmark data has no runs".to_string())?;
-    let status = if count_gate_failures(gate) > 0 {
+    let derived = if count_gate_failures(gate) > 0 {
         "fail"
+    } else if matches!(gate.status.as_deref(), Some("fail") | Some("warn")) {
+        gate.status.as_deref().unwrap_or("unknown")
     } else {
         run.status.as_deref().unwrap_or("unknown")
     };
+    let status = normalize_status(derived);
     let p99 = format_latency_ms(run.k6.as_ref().and_then(|k| k.p99_ms));
     let throughput = format_throughput(run.k6.as_ref().and_then(|k| k.req_per_s));
     let error_rate = sanitize::format_number_precise(
@@ -429,7 +450,7 @@ fn render_hnsw_section(data: &HnswBenchmarkData) -> Result<String, String> {
         .as_ref()
         .and_then(|runs| runs.first())
         .ok_or_else(|| "hnsw benchmark data has no runs".to_string())?;
-    let status = run.status.as_deref().unwrap_or("unknown");
+    let status = normalize_status(run.status.as_deref().unwrap_or("unknown"));
     let mean = run
         .mean_recall_at_10
         .map(|v| format!("{v:.3}"))
@@ -481,7 +502,7 @@ fn render_hnsw_section(data: &HnswBenchmarkData) -> Result<String, String> {
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
     {
-        body.push(format!("\n> {note}"));
+        body.push(format!("\n> {}", escape_cell(Some(note))));
     }
     body.push("</details>".to_string());
     Ok(body.join("\n"))

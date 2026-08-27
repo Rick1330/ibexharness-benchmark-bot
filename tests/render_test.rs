@@ -125,9 +125,7 @@ fn merge_keeps_proxy_and_hnsw_in_one_matrix_comment() {
     assert!(body.contains("**Memory HNSW**"));
     assert!(body.contains("<summary>Deep Dive: Memory HNSW</summary>"));
     assert!(body.contains("1M:** Deferred") || body.contains("Deferred *(smoke/fast"));
-    let proxy_idx = body
-        .find("<!-- IBEX_PROXY_START -->")
-        .expect("proxy section");
+    let proxy_idx = body.find("<!-- IBEX_PROXY_START -->").expect("proxy section");
     let hnsw_idx = body.find("<!-- IBEX_HNSW_START -->").expect("hnsw section");
     assert!(proxy_idx < hnsw_idx);
 
@@ -141,4 +139,55 @@ fn merge_keeps_proxy_and_hnsw_in_one_matrix_comment() {
         .expect("hnsw section");
     assert!(proxy_idx < hnsw_idx);
     assert!(proxy_second.contains("| Suite | Primary SLA | vs Baseline | Status |"));
+}
+
+#[test]
+fn warn_gate_status_surfaces_warning_verdict() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let data: BenchmarkData = serde_json::from_str(
+        &fs::read_to_string(root.join("tests/fixtures/benchmark-data.json")).unwrap(),
+    )
+    .unwrap();
+    let mut gate: GateResult = serde_json::from_str(
+        &fs::read_to_string(root.join("tests/fixtures/gate-result.json")).unwrap(),
+    )
+    .unwrap();
+    gate.status = Some("warn".to_string());
+    let body = render_pr_comment(&data, &gate).expect("render");
+    assert!(body.contains("Benchmarks warning"));
+    assert!(body.contains("<details open>"));
+    assert!(body.contains("|proxy|Proxy|"));
+    assert!(body.contains("|warn -->") || body.contains("|warn|") || body.contains("|warn -->"));
+}
+
+#[test]
+fn hnsw_gate_note_is_sanitized() {
+    let hnsw: HnswBenchmarkData = serde_json::from_value(serde_json::json!({
+        "schema_version": 1,
+        "benchmark": "hnsw_recall_latency",
+        "runs": [{
+            "sha": "abcdef1",
+            "short_sha": "abcdef1",
+            "status": "pass",
+            "mean_recall_at_10": 0.99,
+            "results": [{
+                "corpus_size": 10000,
+                "recall_at_10": 0.99,
+                "latency_ms_p95": 1.2
+            }],
+            "gate_summary": {
+                "has_1m": false,
+                "recall_ok": true,
+                "note": "[click](https://evil.example) then |pipe|"
+            }
+        }]
+    }))
+    .unwrap();
+    let body = merge_hnsw_into_comment("", &hnsw).expect("merge");
+    assert!(
+        !body.contains("](https://evil.example)"),
+        "markdown link must be neutralized"
+    );
+    assert!(body.contains(r"\|") || body.contains("pipe"));
+    assert!(body.contains("\n> "));
 }
