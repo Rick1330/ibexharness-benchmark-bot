@@ -8,6 +8,8 @@ pub const BADGE_PATH: &str = "web/public/benchmarks/badge.svg";
 pub const HNSW_BENCHMARK_DATA_PATH: &str = "web/public/benchmarks/hnsw-benchmark-data.json";
 pub const BENCHMARK_DATA_LABEL: &str = "benchmark-data";
 pub const HNSW_BENCHMARK_DATA_LABEL: &str = "hnsw-benchmark-data";
+/// Shared branch for all suite data publishes — one open PR at a time.
+pub const DATA_PR_BRANCH: &str = "chore/bench-data-publish";
 
 pub fn resolve_harness_repo(requested: &str) -> Result<&str, String> {
     if harness_repo_override_enabled() {

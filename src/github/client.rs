@@ -40,6 +40,14 @@ pub struct OpenPullRequest<'a> {
 }
 
 #[derive(Clone, Copy)]
+pub struct UpdatePullRequest<'a> {
+    pub repo: RepoRef<'a>,
+    pub number: i64,
+    pub title: &'a str,
+    pub body: &'a str,
+}
+
+#[derive(Clone, Copy)]
 pub struct IssueRef<'a> {
     pub repo: RepoRef<'a>,
     pub number: i64,
@@ -416,6 +424,18 @@ impl GitHubClient {
                     "base": "main",
                     "body": req.body,
                     "maintainer_can_modify": false,
+                }),
+            )
+            .await
+    }
+
+    pub async fn update_pull_request(&self, req: UpdatePullRequest<'_>) -> Result<Value> {
+        self.http
+            .patch_json(
+                &format!("{}/pulls/{}", req.repo.base_path(), req.number),
+                serde_json::json!({
+                    "title": req.title,
+                    "body": req.body,
                 }),
             )
             .await

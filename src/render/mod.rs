@@ -57,6 +57,123 @@ pub fn render_data_pr_body(
     run_url: Option<&str>,
     run_number: Option<i64>,
 ) -> String {
+    render_combined_data_pr_body(CombinedDataPrInput {
+        proxy: Some(data),
+        proxy_run_url: run_url,
+        proxy_run_number: run_number,
+        hnsw: None,
+        hnsw_run_url: None,
+        hnsw_run_number: None,
+    })
+}
+
+/// Inputs for a single shared data PR that may carry proxy and/or HNSW suites.
+pub struct CombinedDataPrInput<'a> {
+    pub proxy: Option<&'a BenchmarkData>,
+    pub proxy_run_url: Option<&'a str>,
+    pub proxy_run_number: Option<i64>,
+    pub hnsw: Option<&'a HnswBenchmarkData>,
+    pub hnsw_run_url: Option<&'a str>,
+    pub hnsw_run_number: Option<i64>,
+}
+
+pub fn render_combined_data_pr_body(input: CombinedDataPrInput<'_>) -> String {
+    let mut suites: Vec<&str> = Vec::new();
+    if input.proxy.is_some() {
+        suites.push("Proxy");
+    }
+    if input.hnsw.is_some() {
+        suites.push("Memory HNSW");
+    }
+    let suites_list = if suites.is_empty() {
+        "_none_".to_string()
+    } else {
+        suites.join(", ")
+    };
+
+    let mut lines = vec![
+        render_compact_brand(),
+        String::new(),
+        "## What and Why".to_string(),
+        String::new(),
+        format!(
+            "Automated publish of public benchmark history for ibex-harness. \
+             Suites in this PR: **{suites_list}**."
+        ),
+        String::new(),
+        "Keeps `/benchmarks` and `/benchmarks/memory` history current without \
+         contributor-authored commits."
+            .to_string(),
+        String::new(),
+        "## Tracking issue".to_string(),
+        String::new(),
+        "N/A (GitHub App data publish)".to_string(),
+        String::new(),
+        "## How".to_string(),
+        String::new(),
+    ];
+
+    if let Some(data) = input.proxy {
+        lines.push(render_proxy_data_section(
+            data,
+            input.proxy_run_url,
+            input.proxy_run_number,
+        ));
+        lines.push(String::new());
+    }
+    if let Some(data) = input.hnsw {
+        lines.push(render_hnsw_data_section(
+            data,
+            input.hnsw_run_url,
+            input.hnsw_run_number,
+        ));
+        lines.push(String::new());
+    }
+
+    lines.push("## Testing".to_string());
+    lines.push(String::new());
+    lines.push("- [ ] Bot workflow validation passed (suite(s) above)".to_string());
+    lines.push("- [ ] Harness CI green on this PR".to_string());
+    lines.push("- [ ] `/benchmarks` and/or `/benchmarks/memory` preview updated".to_string());
+    lines.push(String::new());
+    lines.push("## Performance".to_string());
+    lines.push(String::new());
+    lines.push(
+        "No runtime change — history JSON / badge only. Review suite tables above for SLA deltas."
+            .to_string(),
+    );
+    lines.push(String::new());
+    lines.push("## Security".to_string());
+    lines.push(String::new());
+    lines.push(
+        "No secrets; App-signed commits; artifacts re-verified via Actions API before publish."
+            .to_string(),
+    );
+    lines.push(String::new());
+    lines.push("## Migrations / Ops".to_string());
+    lines.push(String::new());
+    lines.push("None.".to_string());
+    lines.push(String::new());
+    lines.push("## Docs".to_string());
+    lines.push(String::new());
+    lines.push(
+        "Public benchmark history only (`web/public/benchmarks/*`). Suite JSON files stay separate."
+            .to_string(),
+    );
+    lines.push(String::new());
+    lines.push("## Checklist (Definition of Done)".to_string());
+    lines.push(String::new());
+    lines.push("- [ ] Correct files only (proxy JSON+badge and/or HNSW JSON)".to_string());
+    lines.push("- [ ] Labels match files (`benchmark-data` / `hnsw-benchmark-data`)".to_string());
+    lines.push("- [ ] Single shared data PR branch `chore/bench-data-publish`".to_string());
+    lines.join("\n")
+}
+
+fn render_proxy_data_section(
+    data: &BenchmarkData,
+    run_url: Option<&str>,
+    run_number: Option<i64>,
+) -> String {
     let run = data.runs.as_ref().and_then(|runs| runs.first());
     let short_sha = run
         .map(resolve_short_sha)
@@ -76,9 +193,7 @@ pub fn render_data_pr_body(
         .unwrap_or_else(|| "—".to_string());
 
     let mut lines = vec![
-        render_compact_brand(),
-        String::new(),
-        "## Automated benchmark data update".to_string(),
+        "### Proxy suite".to_string(),
         String::new(),
         format!(
             "**Status:** {} **{}**",
@@ -93,25 +208,25 @@ pub fn render_data_pr_body(
                 vec!["Head SHA".to_string(), short_sha],
                 vec!["Proxy p99 (k6)".to_string(), p99],
                 vec!["Proxy overhead (Go)".to_string(), proxy_overhead],
+                vec![
+                    "Paths".to_string(),
+                    format!(
+                        "`{}`, `{}`",
+                        crate::config::BENCHMARK_DATA_PATH,
+                        crate::config::BADGE_PATH
+                    ),
+                ],
             ],
         ),
-    ];
-    lines.push(String::new());
-    lines.push(
+        String::new(),
         "_k6 p99 is the authoritative SLA metric. Stage breakdown and ns/op values are \
          synthetic Go microbenchmarks._"
             .to_string(),
-    );
+    ];
     if let Some(url) = run_url {
         lines.push(String::new());
-        lines.push(format!("- [Harness benchmark workflow run]({url})"));
+        lines.push(format!("- [Harness Benchmarks workflow run]({url})"));
     }
-    lines.push(String::new());
-    lines.push("### Reviewer checklist".to_string());
-    lines.push(String::new());
-    lines.push("- [ ] Validation passed in bot workflow".to_string());
-    lines.push("- [ ] Harness CI green".to_string());
-    lines.push("- [ ] Docs preview shows updated history".to_string());
     lines.join("\n")
 }
 
@@ -530,6 +645,21 @@ pub fn render_hnsw_data_pr_body(
     run_url: Option<&str>,
     run_number: i64,
 ) -> String {
+    render_combined_data_pr_body(CombinedDataPrInput {
+        proxy: None,
+        proxy_run_url: None,
+        proxy_run_number: None,
+        hnsw: Some(data),
+        hnsw_run_url: run_url,
+        hnsw_run_number: Some(run_number),
+    })
+}
+
+fn render_hnsw_data_section(
+    data: &HnswBenchmarkData,
+    run_url: Option<&str>,
+    run_number: Option<i64>,
+) -> String {
     let latest = data.runs.as_ref().and_then(|runs| runs.first());
     let short_sha = latest
         .and_then(|run| run.short_sha.as_deref().or(run.sha.as_deref()))
@@ -539,16 +669,18 @@ pub fn render_hnsw_data_pr_body(
         .and_then(|run| run.mean_recall_at_10)
         .map(|v| format!("`{v:.4}`"))
         .unwrap_or_else(|| "`n/a`".into());
+    let number = run_number
+        .or(latest.and_then(|r| r.run_number))
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "?".to_string());
 
     let mut lines = vec![
-        render_compact_brand(),
-        String::new(),
-        "## Automated HNSW benchmark data update".to_string(),
+        "### Memory HNSW suite".to_string(),
         String::new(),
         markdown_table(
             &["Field", "Value"],
             &[
-                vec!["Run number".to_string(), run_number.to_string()],
+                vec!["Run number".to_string(), number],
                 vec!["Head SHA".to_string(), short_sha],
                 vec!["Mean recall@10".to_string(), mean],
                 vec![
@@ -558,25 +690,18 @@ pub fn render_hnsw_data_pr_body(
             ],
         ),
         String::new(),
-        "### Corpus cells".to_string(),
+        "#### Corpus cells".to_string(),
         String::new(),
         render_hnsw_cells_table(latest.and_then(|run| run.results.as_deref()).unwrap_or(&[])),
         String::new(),
-        "_Does **not** modify proxy `benchmark-data.json`. Published cells should use \
-         production-like knobs (`ef_search=40`, `min_similarity≈0.70`, `iterative_scan=off`, \
-         bulk index build)._"
+        "_Production-like knobs expected (`ef_search=40`, `min_similarity≈0.70`, \
+         `iterative_scan=off`, bulk index build)._"
             .to_string(),
     ];
     if let Some(url) = run_url {
         lines.push(String::new());
         lines.push(format!("- [Harness Memory Benchmarks workflow run]({url})"));
     }
-    lines.push(String::new());
-    lines.push("### Reviewer checklist".to_string());
-    lines.push(String::new());
-    lines.push("- [ ] HNSW validation passed in bot workflow".to_string());
-    lines.push("- [ ] Harness Memory Benchmarks CI green".to_string());
-    lines.push("- [ ] `/benchmarks/memory` preview shows updated history".to_string());
     lines.join("\n")
 }
 

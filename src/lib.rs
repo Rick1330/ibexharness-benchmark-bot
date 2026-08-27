@@ -8,6 +8,7 @@ pub mod hnsw_validate;
 pub mod model;
 pub mod publish;
 pub mod publish_hnsw;
+pub mod publish_shared;
 pub mod render;
 pub mod validate;
 pub mod verify;

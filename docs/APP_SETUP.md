@@ -59,7 +59,7 @@ stale binary cannot silently break Memory Benchmarks collect.
 
 1. Open any harness PR → **Benchmarks** posts/updates the shared sticky comment (`IBEX_BOT_COMMENT`) with the suite matrix + **Proxy** deep dive. **No** data PR.
 2. When **Memory Benchmarks** runs on the PR → App upserts the **Memory HNSW** matrix row + deep dive on the same comment via `post-hnsw-pr-comment`. **No** HNSW data PR from PR runs.
-3. On schedule / main collect → bot publish workflows open one data PR per suite.
+3. On schedule / main collect → bot publish workflows upsert **one** shared data PR (`chore/bench-data-publish`) with proxy and/or HNSW files.
 4. Confirm `BENCHMARK_BOT_ENABLED=true`, `BENCHMARK_BOT_SHA` == `BOT_RELEASE_SHA`, and `BENCHMARK_BOT_RELEASE_TAG` matches `bot-${SHA:0:7}` with a downloadable linux-amd64 asset.
 
 Harness `notify-benchmark-bot` / `notify-hnsw-benchmark-bot` fire on successful main-branch collects (plus schedule / dispatch per workflow).

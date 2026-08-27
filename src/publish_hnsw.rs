@@ -2,13 +2,11 @@
 
 use std::fs;
 
-use serde_json::Value;
-
-use crate::config::{HNSW_BENCHMARK_DATA_LABEL, HNSW_BENCHMARK_DATA_PATH};
+use crate::config::{DATA_PR_BRANCH, HNSW_BENCHMARK_DATA_PATH};
 use crate::error::{bot_err, Result};
 use crate::github::{
     bot_commit_message, split_repo, CommitFile, CommitFilesRequest, CreateBranch, GitHubClient,
-    IssueRef, LabeledPrSearch, OpenPullRequest, RepoPathRef, RepoRef,
+    RepoPathRef, RepoRef,
 };
 use crate::hnsw_artifact::extract_hnsw_artifact_zip;
 use crate::hnsw_validate::{
@@ -16,7 +14,7 @@ use crate::hnsw_validate::{
     validate_hnsw_file,
 };
 use crate::model::{DispatchPayload, HnswBenchmarkData};
-use crate::render::render_hnsw_data_pr_body;
+use crate::publish_shared::{hnsw_head_already_on_branch, upsert_combined_data_pr, UpsertDataPr};
 use crate::verify;
 
 pub struct PublishResult {
@@ -34,24 +32,26 @@ pub async fn publish_hnsw_benchmark_data(
     let run = verify::verify_hnsw_dispatch(client, repo_full, payload).await?;
     let (owner, repo) = split_repo(repo_full)?;
     let repo_ref = RepoRef::new(owner, repo);
-    let branch = format!("chore/hnsw-bench-data-{}", payload.run_number);
+    let branch = DATA_PR_BRANCH.to_string();
     let head_sha = run
         .head_sha
         .as_deref()
         .ok_or_else(|| bot_err("verified run missing head_sha".to_string()))?;
 
-    if let Some(existing) = find_existing_publish_pr(client, repo_ref, &branch, head_sha).await? {
-        return Ok(PublishResult {
-            skipped: true,
-            pr_url: existing
-                .get("html_url")
-                .and_then(|value| value.as_str())
-                .map(str::to_owned),
-            branch,
-        });
-    }
-
     ensure_not_replay(client, repo_ref, payload, head_sha).await?;
+
+    if let Some(existing) = client.find_open_pr(repo_ref, DATA_PR_BRANCH).await? {
+        if hnsw_head_already_on_branch(client, repo_ref, head_sha).await? {
+            return Ok(PublishResult {
+                skipped: true,
+                pr_url: existing
+                    .get("html_url")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_owned),
+                branch,
+            });
+        }
+    }
 
     let zip = client
         .download_hnsw_artifact_zip(repo_ref, payload.run_id)
@@ -74,11 +74,11 @@ pub async fn publish_hnsw_benchmark_data(
     }
 
     let main_sha = client.main_sha(repo_ref).await?;
-    if !client.ref_exists(repo_ref, &branch).await? {
+    if !client.ref_exists(repo_ref, DATA_PR_BRANCH).await? {
         client
             .create_branch(CreateBranch {
                 repo: repo_ref,
-                branch: &branch,
+                branch: DATA_PR_BRANCH,
                 sha: &main_sha,
             })
             .await?;
@@ -93,7 +93,7 @@ pub async fn publish_hnsw_benchmark_data(
         .commit_files(
             repo_ref,
             CommitFilesRequest {
-                branch: &branch,
+                branch: DATA_PR_BRANCH,
                 message: &message,
                 files: &[CommitFile {
                     path: HNSW_BENCHMARK_DATA_PATH,
@@ -103,28 +103,15 @@ pub async fn publish_hnsw_benchmark_data(
         )
         .await?;
 
-    let body =
-        render_hnsw_data_pr_body(&benchmark_data, run.html_url.as_deref(), payload.run_number);
-    let title = subject;
-    let pr = client
-        .open_pull_request(OpenPullRequest {
-            repo: repo_ref,
-            branch: &branch,
-            title: &title,
-            body: &body,
-        })
-        .await?;
-    if let Some(number) = pr.get("number").and_then(Value::as_i64) {
-        client
-            .add_labels(
-                IssueRef {
-                    repo: repo_ref,
-                    number,
-                },
-                &["automated", HNSW_BENCHMARK_DATA_LABEL],
-            )
-            .await?;
-    }
+    let pr = upsert_combined_data_pr(UpsertDataPr {
+        client,
+        repo: repo_ref,
+        proxy_run_url: None,
+        proxy_run_number: None,
+        hnsw_run_url: run.html_url.as_deref(),
+        hnsw_run_number: Some(payload.run_number),
+    })
+    .await?;
 
     Ok(PublishResult {
         skipped: false,
@@ -166,24 +153,6 @@ async fn ensure_not_replay(
         }
     }
     Ok(())
-}
-
-async fn find_existing_publish_pr(
-    client: &GitHubClient,
-    repo: RepoRef<'_>,
-    branch: &str,
-    head_sha: &str,
-) -> Result<Option<Value>> {
-    if let Some(existing) = client.find_open_pr(repo, branch).await? {
-        return Ok(Some(existing));
-    }
-    client
-        .find_labeled_pr_with_sha(LabeledPrSearch {
-            repo,
-            label: HNSW_BENCHMARK_DATA_LABEL,
-            head_sha,
-        })
-        .await
 }
 
 #[cfg(test)]
@@ -247,7 +216,7 @@ mod tests {
     }
 
     #[test]
-    fn renders_each_hnsw_cell_with_methodology_knobs() {
+    fn renders_hnsw_data_pr_with_template_sections() {
         let data = data_with_results(Some(vec![
             HnswSizeResult {
                 corpus_size: Some(10_000),
@@ -271,7 +240,8 @@ mod tests {
 
         let body = render_hnsw_data_pr_body(&data, Some("https://example.test/runs/42"), 42);
 
-        assert!(body.contains("## Automated HNSW benchmark data update"));
+        assert!(body.contains("## What and Why"));
+        assert!(body.contains("### Memory HNSW suite"));
         assert!(body.contains("| Size | Recall@10 | p95 | ef | min_sim | iterative | build |"));
         assert!(body.contains("| 10000 |"));
         assert!(body.contains("1.3ms"));
@@ -279,8 +249,9 @@ mod tests {
         assert!(body.contains("12.0ms"));
         assert!(body.contains("strict_order"));
         assert!(body.contains("incremental"));
-        assert!(body.contains("production-like knobs"));
+        assert!(body.contains("Production-like knobs") || body.contains("production-like knobs"));
         assert!(body.contains("https://example.test/runs/42"));
+        assert!(body.contains("chore/bench-data-publish"));
     }
 
     #[test]
