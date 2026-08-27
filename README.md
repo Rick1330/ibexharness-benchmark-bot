@@ -17,10 +17,10 @@ GitHub App (Rust) · publishes benchmark data to <a href="https://github.com/Ric
 | `publish` | Validate proxy artifact and open data PR (`benchmark-data.json` + badge) |
 | `verify-hnsw-dispatch` | Re-verify Memory Benchmarks dispatch |
 | `publish-hnsw` | Validate HNSW artifact and open data PR (`hnsw-benchmark-data.json` only) |
-| `post-pr-comment` | Upsert **Proxy** section of the shared sticky comment (`IBEX_BOT_COMMENT`) |
-| `render-pr-comment` | Render Proxy comment to stdout |
-| `post-hnsw-pr-comment` | Upsert **Memory HNSW** section of the same sticky comment (1M deferred ≠ WARN on smoke/fast) |
-| `render-hnsw-pr-comment` | Render Memory HNSW comment to stdout |
+| `post-pr-comment` | Upsert **Proxy** suite into the shared sticky comment (`IBEX_BOT_COMMENT` matrix + deep dive) |
+| `render-pr-comment` | Render Proxy sticky comment to stdout |
+| `post-hnsw-pr-comment` | Upsert **Memory HNSW** suite into the same sticky comment |
+| `render-hnsw-pr-comment` | Render Memory HNSW sticky comment to stdout |
 
 [Setup](docs/APP_SETUP.md) · [Runbook](docs/RUNBOOK.md) · [Threat model](docs/THREAT_MODEL.md)
 

@@ -236,13 +236,14 @@ mod tests {
         assert!(body.contains("<!-- IBEX_BOT_COMMENT -->"));
         assert!(!body.contains("<!-- IBEX_BOT_COMMENT_HNSW -->"));
         assert!(body.contains("<!-- IBEX_HNSW_START -->"));
-        assert!(body.contains("### Memory HNSW"));
+        assert!(body.contains("#### Suite matrix"));
+        assert!(body.contains("**Memory HNSW**"));
         assert!(body.contains("PASS"));
-        assert!(body.contains("1M Sunday-only") || body.contains("1M deferred"));
+        assert!(body.contains("Deferred") || body.contains("1M"));
         assert!(!body.contains("**WARN**"));
         assert!(!body.contains("https://docs.ibexharness.com/benchmarks/memory"));
-        assert!(body.contains("**Coverage**"));
-        assert!(body.contains("<summary>More</summary>"));
+        assert!(body.contains("<summary>Deep Dive: Memory HNSW</summary>"));
+        assert!(body.contains("View IBEX dashboard"));
     }
 
     #[test]
