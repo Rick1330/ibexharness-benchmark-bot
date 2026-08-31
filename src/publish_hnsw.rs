@@ -110,6 +110,10 @@ pub async fn publish_hnsw_benchmark_data(
         proxy_run_number: None,
         hnsw_run_url: run.html_url.as_deref(),
         hnsw_run_number: Some(payload.run_number),
+        ranking_run_url: None,
+        ranking_run_number: None,
+        write_run_url: None,
+        write_run_number: None,
     })
     .await?;
 

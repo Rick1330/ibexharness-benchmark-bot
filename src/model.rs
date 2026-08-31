@@ -127,6 +127,66 @@ pub struct HnswSizeResult {
     pub row_count_verified: Option<i64>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RankingQualityBenchmarkData {
+    pub schema_version: Option<i64>,
+    pub benchmark: Option<String>,
+    pub runs: Option<Vec<RankingQualityBenchmarkRun>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct RankingQualityBenchmarkRun {
+    pub sha: Option<String>,
+    pub short_sha: Option<String>,
+    pub timestamp: Option<String>,
+    pub branch: Option<String>,
+    pub run_number: Option<i64>,
+    pub run_url: Option<String>,
+    pub gold_set: Option<String>,
+    pub query_count: Option<i64>,
+    pub memory_count: Option<i64>,
+    pub metrics: Option<RankingQualityBenchmarkMetrics>,
+    pub status: Option<String>,
+    pub gate_summary: Option<Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct RankingQualityBenchmarkMetrics {
+    pub precision_at_5: Option<f64>,
+    pub recall_at_10: Option<f64>,
+    pub mrr: Option<f64>,
+    pub expected_order_match: Option<f64>,
+    pub top_category_accuracy: Option<f64>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WritePipelineBenchmarkData {
+    pub schema_version: Option<i64>,
+    pub benchmark: Option<String>,
+    pub runs: Option<Vec<WritePipelineBenchmarkRun>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct WritePipelineBenchmarkRun {
+    pub sha: Option<String>,
+    pub short_sha: Option<String>,
+    pub timestamp: Option<String>,
+    pub branch: Option<String>,
+    pub run_number: Option<i64>,
+    pub run_url: Option<String>,
+    pub iterations: Option<i64>,
+    pub metrics: Option<WritePipelineBenchmarkMetrics>,
+    pub status: Option<String>,
+    pub gate_summary: Option<Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct WritePipelineBenchmarkMetrics {
+    pub latency_ms_p50: Option<f64>,
+    pub latency_ms_p95: Option<f64>,
+    pub latency_ms_p99: Option<f64>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::HnswSizeResult;

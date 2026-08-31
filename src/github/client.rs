@@ -163,6 +163,24 @@ impl GitHubClient {
             .await
     }
 
+    pub async fn download_ranking_quality_artifact_zip(
+        &self,
+        repo: RepoRef<'_>,
+        run_id: i64,
+    ) -> Result<Vec<u8>> {
+        self.download_named_artifact_zip(repo, run_id, "ranking-quality-benchmark-data")
+            .await
+    }
+
+    pub async fn download_write_pipeline_artifact_zip(
+        &self,
+        repo: RepoRef<'_>,
+        run_id: i64,
+    ) -> Result<Vec<u8>> {
+        self.download_named_artifact_zip(repo, run_id, "write-pipeline-benchmark-data")
+            .await
+    }
+
     async fn download_named_artifact_zip(
         &self,
         repo: RepoRef<'_>,

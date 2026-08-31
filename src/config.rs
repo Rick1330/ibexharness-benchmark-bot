@@ -6,8 +6,14 @@ pub const EXPECTED_HNSW_WORKFLOW_PATH: &str = ".github/workflows/memory-benchmar
 pub const BENCHMARK_DATA_PATH: &str = "web/public/benchmarks/benchmark-data.json";
 pub const BADGE_PATH: &str = "web/public/benchmarks/badge.svg";
 pub const HNSW_BENCHMARK_DATA_PATH: &str = "web/public/benchmarks/hnsw-benchmark-data.json";
+pub const RANKING_QUALITY_BENCHMARK_DATA_PATH: &str =
+    "web/public/benchmarks/ranking-quality-benchmark-data.json";
+pub const WRITE_PIPELINE_BENCHMARK_DATA_PATH: &str =
+    "web/public/benchmarks/write-pipeline-benchmark-data.json";
 pub const BENCHMARK_DATA_LABEL: &str = "benchmark-data";
 pub const HNSW_BENCHMARK_DATA_LABEL: &str = "hnsw-benchmark-data";
+pub const RANKING_QUALITY_BENCHMARK_DATA_LABEL: &str = "ranking-quality-benchmark-data";
+pub const WRITE_PIPELINE_BENCHMARK_DATA_LABEL: &str = "write-pipeline-benchmark-data";
 /// Shared branch for all suite data publishes — one open PR at a time.
 pub const DATA_PR_BRANCH: &str = "chore/bench-data-publish";
 

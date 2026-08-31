@@ -8,12 +8,19 @@ use crate::error::{bot_err, Result};
 use crate::github::{
     installation_token, CommitStatus, GitHubClient, IssueCommentUpdate, IssueRef, RepoRef,
 };
-use crate::model::{BenchmarkData, BenchmarkRun, GateResult, HnswBenchmarkData};
+use crate::model::{
+    BenchmarkData, BenchmarkRun, GateResult, HnswBenchmarkData, RankingQualityBenchmarkData,
+    WritePipelineBenchmarkData,
+};
 use crate::publish;
 use crate::publish_hnsw;
+use crate::publish_ranking_quality;
+use crate::publish_write_pipeline;
 use crate::render::{
-    merge_hnsw_into_comment, merge_proxy_into_comment, render_hnsw_pr_comment, render_pr_comment,
-    COMMENT_MARKER, COMMENT_MARKER_HNSW,
+    merge_hnsw_into_comment, merge_proxy_into_comment, merge_ranking_quality_into_comment,
+    merge_write_pipeline_into_comment, render_hnsw_pr_comment, render_pr_comment,
+    render_ranking_quality_pr_comment, render_write_pipeline_pr_comment, COMMENT_MARKER,
+    COMMENT_MARKER_HNSW,
 };
 use crate::verify;
 
@@ -93,6 +100,56 @@ pub enum Commands {
     PostHnswPrComment {
         #[arg(long, env = "HNSW_BENCHMARK_DATA_PATH")]
         hnsw_benchmark_data: PathBuf,
+        #[arg(long, env = "GITHUB_TOKEN")]
+        github_token: String,
+        #[arg(long, env = "GITHUB_REPOSITORY")]
+        github_repository: String,
+        #[arg(long, env = "PR_NUMBER")]
+        pr_number: i64,
+    },
+    /// Download ranking-quality artifact, validate, and open a memory benchmark data PR
+    PublishRanking {
+        #[arg(long)]
+        payload: String,
+        #[arg(long, env = "HARNESS_REPO", default_value = "Rick1330/ibex-harness")]
+        repo: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Download write-pipeline artifact, validate, and open a memory benchmark data PR
+    PublishWrite {
+        #[arg(long)]
+        payload: String,
+        #[arg(long, env = "HARNESS_REPO", default_value = "Rick1330/ibex-harness")]
+        repo: String,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Render a ranking-quality PR comment to stdout
+    RenderRankingPrComment {
+        #[arg(long, env = "RANKING_QUALITY_BENCHMARK_DATA_PATH")]
+        ranking_benchmark_data: PathBuf,
+    },
+    /// Render and post a ranking-quality section on the shared sticky comment
+    PostRankingPrComment {
+        #[arg(long, env = "RANKING_QUALITY_BENCHMARK_DATA_PATH")]
+        ranking_benchmark_data: PathBuf,
+        #[arg(long, env = "GITHUB_TOKEN")]
+        github_token: String,
+        #[arg(long, env = "GITHUB_REPOSITORY")]
+        github_repository: String,
+        #[arg(long, env = "PR_NUMBER")]
+        pr_number: i64,
+    },
+    /// Render a write-pipeline PR comment to stdout
+    RenderWritePrComment {
+        #[arg(long, env = "WRITE_PIPELINE_BENCHMARK_DATA_PATH")]
+        write_benchmark_data: PathBuf,
+    },
+    /// Render and post a write-pipeline section on the shared sticky comment
+    PostWritePrComment {
+        #[arg(long, env = "WRITE_PIPELINE_BENCHMARK_DATA_PATH")]
+        write_benchmark_data: PathBuf,
         #[arg(long, env = "GITHUB_TOKEN")]
         github_token: String,
         #[arg(long, env = "GITHUB_REPOSITORY")]
@@ -203,6 +260,92 @@ pub async fn run(cli: Cli) -> Result<()> {
             let body = merge_hnsw_into_comment(&existing, &data).map_err(bot_err)?;
             upsert_pr_comment(&client, repo_ref, pr_number, &body, COMMENT_MARKER).await?;
         }
+        Commands::PublishRanking {
+            payload,
+            repo,
+            dry_run,
+        } => {
+            let repo = locked_repo(&repo)?;
+            let parsed = verify::parse_payload_json(&payload)?;
+            let client = app_client().await?;
+            let result = publish_ranking_quality::publish_ranking_quality_benchmark_data(
+                &client, repo, &parsed, dry_run,
+            )
+            .await?;
+            println!(
+                "{}",
+                serde_json::json!({
+                    "ok": true,
+                    "skipped": result.skipped,
+                    "branch": result.branch,
+                    "pr_url": result.pr_url,
+                    "dry_run": dry_run,
+                })
+            );
+        }
+        Commands::PublishWrite {
+            payload,
+            repo,
+            dry_run,
+        } => {
+            let repo = locked_repo(&repo)?;
+            let parsed = verify::parse_payload_json(&payload)?;
+            let client = app_client().await?;
+            let result = publish_write_pipeline::publish_write_pipeline_benchmark_data(
+                &client, repo, &parsed, dry_run,
+            )
+            .await?;
+            println!(
+                "{}",
+                serde_json::json!({
+                    "ok": true,
+                    "skipped": result.skipped,
+                    "branch": result.branch,
+                    "pr_url": result.pr_url,
+                    "dry_run": dry_run,
+                })
+            );
+        }
+        Commands::RenderRankingPrComment {
+            ranking_benchmark_data,
+        } => {
+            let body = render_ranking_comment_from_path(&ranking_benchmark_data)?;
+            print!("{body}");
+        }
+        Commands::PostRankingPrComment {
+            ranking_benchmark_data,
+            github_token,
+            github_repository,
+            pr_number,
+        } => {
+            let data = read_json::<RankingQualityBenchmarkData>(&ranking_benchmark_data)?;
+            let (owner, repo) = crate::github::split_repo(&github_repository)?;
+            let repo_ref = RepoRef::new(owner, repo);
+            let client = comment_client(&github_token).await?;
+            let existing = existing_sticky_body(&client, repo_ref, pr_number).await?;
+            let body = merge_ranking_quality_into_comment(&existing, &data).map_err(bot_err)?;
+            upsert_pr_comment(&client, repo_ref, pr_number, &body, COMMENT_MARKER).await?;
+        }
+        Commands::RenderWritePrComment {
+            write_benchmark_data,
+        } => {
+            let body = render_write_comment_from_path(&write_benchmark_data)?;
+            print!("{body}");
+        }
+        Commands::PostWritePrComment {
+            write_benchmark_data,
+            github_token,
+            github_repository,
+            pr_number,
+        } => {
+            let data = read_json::<WritePipelineBenchmarkData>(&write_benchmark_data)?;
+            let (owner, repo) = crate::github::split_repo(&github_repository)?;
+            let repo_ref = RepoRef::new(owner, repo);
+            let client = comment_client(&github_token).await?;
+            let existing = existing_sticky_body(&client, repo_ref, pr_number).await?;
+            let body = merge_write_pipeline_into_comment(&existing, &data).map_err(bot_err)?;
+            upsert_pr_comment(&client, repo_ref, pr_number, &body, COMMENT_MARKER).await?;
+        }
     }
     Ok(())
 }
@@ -252,6 +395,16 @@ fn render_comment_from_paths(
 fn render_hnsw_comment_from_path(hnsw_benchmark_data: &PathBuf) -> Result<String> {
     let data = read_json::<HnswBenchmarkData>(hnsw_benchmark_data)?;
     render_hnsw_pr_comment(&data).map_err(bot_err)
+}
+
+fn render_ranking_comment_from_path(ranking_benchmark_data: &PathBuf) -> Result<String> {
+    let data = read_json::<RankingQualityBenchmarkData>(ranking_benchmark_data)?;
+    render_ranking_quality_pr_comment(&data).map_err(bot_err)
+}
+
+fn render_write_comment_from_path(write_benchmark_data: &PathBuf) -> Result<String> {
+    let data = read_json::<WritePipelineBenchmarkData>(write_benchmark_data)?;
+    render_write_pipeline_pr_comment(&data).map_err(bot_err)
 }
 
 fn load_gate_result(gate_result: &PathBuf) -> GateResult {
