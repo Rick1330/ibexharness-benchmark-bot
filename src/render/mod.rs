@@ -2,14 +2,15 @@ mod sanitize;
 
 use crate::model::{
     BenchmarkData, BenchmarkRun, GateCheck, GateResult, HnswBenchmarkData, HnswSizeResult,
-    StageMetrics,
+    RankingQualityBenchmarkData, StageMetrics, WritePipelineBenchmarkData,
 };
 pub use sanitize::{
     escape_cell, format_delta, format_latency_delta, format_latency_ms, format_ns_per_op,
     format_number, format_throughput, format_throughput_delta, sanitize_branch, sanitize_gate_name,
     sanitize_sha, status_emoji, COMMENT_MARKER, COMMENT_MARKER_HNSW, ENV_SECTION_END,
     ENV_SECTION_START, HNSW_SECTION_END, HNSW_SECTION_START, PROXY_SECTION_END,
-    PROXY_SECTION_START, SUITE_META_PREFIX,
+    PROXY_SECTION_START, RANKING_QUALITY_SECTION_END, RANKING_QUALITY_SECTION_START,
+    SUITE_META_PREFIX, WRITE_PIPELINE_SECTION_END, WRITE_PIPELINE_SECTION_START,
 };
 
 const DOCS_BASE: &str = "https://docs.ibexharness.com/benchmarks";
@@ -22,6 +23,7 @@ const BRAND_MARK_DARK: &str =
 const BRAND_NAME: &str = "IBEX Benchmark Bot";
 const BRAND_LOGO_PX: u32 = 32;
 const P99_SLA_MS: f64 = 20.0;
+const WRITE_P95_SLA_MS: f64 = 200.0;
 
 #[derive(Clone, Debug)]
 struct SuiteMeta {
@@ -64,10 +66,16 @@ pub fn render_data_pr_body(
         hnsw: None,
         hnsw_run_url: None,
         hnsw_run_number: None,
+        ranking: None,
+        ranking_run_url: None,
+        ranking_run_number: None,
+        write: None,
+        write_run_url: None,
+        write_run_number: None,
     })
 }
 
-/// Inputs for a single shared data PR that may carry proxy and/or HNSW suites.
+/// Inputs for a single shared data PR that may carry any benchmark suite.
 pub struct CombinedDataPrInput<'a> {
     pub proxy: Option<&'a BenchmarkData>,
     pub proxy_run_url: Option<&'a str>,
@@ -75,6 +83,12 @@ pub struct CombinedDataPrInput<'a> {
     pub hnsw: Option<&'a HnswBenchmarkData>,
     pub hnsw_run_url: Option<&'a str>,
     pub hnsw_run_number: Option<i64>,
+    pub ranking: Option<&'a RankingQualityBenchmarkData>,
+    pub ranking_run_url: Option<&'a str>,
+    pub ranking_run_number: Option<i64>,
+    pub write: Option<&'a WritePipelineBenchmarkData>,
+    pub write_run_url: Option<&'a str>,
+    pub write_run_number: Option<i64>,
 }
 
 pub fn render_combined_data_pr_body(input: CombinedDataPrInput<'_>) -> String {
@@ -84,6 +98,12 @@ pub fn render_combined_data_pr_body(input: CombinedDataPrInput<'_>) -> String {
     }
     if input.hnsw.is_some() {
         suites.push("Memory HNSW");
+    }
+    if input.ranking.is_some() {
+        suites.push("Ranking quality");
+    }
+    if input.write.is_some() {
+        suites.push("Write pipeline");
     }
     let suites_list = if suites.is_empty() {
         "_none_".to_string()
@@ -129,6 +149,22 @@ pub fn render_combined_data_pr_body(input: CombinedDataPrInput<'_>) -> String {
         ));
         lines.push(String::new());
     }
+    if let Some(data) = input.ranking {
+        lines.push(render_ranking_quality_data_section(
+            data,
+            input.ranking_run_url,
+            input.ranking_run_number,
+        ));
+        lines.push(String::new());
+    }
+    if let Some(data) = input.write {
+        lines.push(render_write_pipeline_data_section(
+            data,
+            input.write_run_url,
+            input.write_run_number,
+        ));
+        lines.push(String::new());
+    }
 
     lines.push("## Testing".to_string());
     lines.push(String::new());
@@ -163,8 +199,8 @@ pub fn render_combined_data_pr_body(input: CombinedDataPrInput<'_>) -> String {
     lines.push(String::new());
     lines.push("## Checklist (Definition of Done)".to_string());
     lines.push(String::new());
-    lines.push("- [ ] Correct files only (proxy JSON+badge and/or HNSW JSON)".to_string());
-    lines.push("- [ ] Labels match files (`benchmark-data` / `hnsw-benchmark-data`)".to_string());
+    lines.push("- [ ] Correct files only (proxy JSON+badge and/or suite JSON files)".to_string());
+    lines.push("- [ ] Labels match files (`benchmark-data`, `hnsw-benchmark-data`, `ranking-quality-benchmark-data`, `write-pipeline-benchmark-data`)".to_string());
     lines.push("- [ ] Single shared data PR branch `chore/bench-data-publish`".to_string());
     lines.join("\n")
 }
@@ -235,11 +271,57 @@ pub fn render_hnsw_pr_comment(data: &HnswBenchmarkData) -> Result<String, String
     merge_hnsw_into_comment("", data)
 }
 
-/// Merge the Memory HNSW suite into the shared sticky comment (preserves Proxy).
+/// Merge the Memory HNSW suite into the shared sticky comment (preserves other suites).
 pub fn merge_hnsw_into_comment(existing: &str, data: &HnswBenchmarkData) -> Result<String, String> {
     let section = render_hnsw_section(data)?;
     let mut body = ensure_comment_shell(existing);
     body = upsert_section(&body, HNSW_SECTION_START, HNSW_SECTION_END, &section);
+    Ok(rebuild_comment_shell(&body))
+}
+
+/// Compact ranking-quality section merged into the shared sticky comment.
+pub fn render_ranking_quality_pr_comment(
+    data: &RankingQualityBenchmarkData,
+) -> Result<String, String> {
+    merge_ranking_quality_into_comment("", data)
+}
+
+/// Merge ranking-quality into the shared sticky comment (preserves other suites).
+pub fn merge_ranking_quality_into_comment(
+    existing: &str,
+    data: &RankingQualityBenchmarkData,
+) -> Result<String, String> {
+    let section = render_ranking_quality_section(data)?;
+    let mut body = ensure_comment_shell(existing);
+    body = upsert_section(
+        &body,
+        RANKING_QUALITY_SECTION_START,
+        RANKING_QUALITY_SECTION_END,
+        &section,
+    );
+    Ok(rebuild_comment_shell(&body))
+}
+
+/// Compact write-pipeline section merged into the shared sticky comment.
+pub fn render_write_pipeline_pr_comment(
+    data: &WritePipelineBenchmarkData,
+) -> Result<String, String> {
+    merge_write_pipeline_into_comment("", data)
+}
+
+/// Merge write-pipeline into the shared sticky comment (preserves other suites).
+pub fn merge_write_pipeline_into_comment(
+    existing: &str,
+    data: &WritePipelineBenchmarkData,
+) -> Result<String, String> {
+    let section = render_write_pipeline_section(data)?;
+    let mut body = ensure_comment_shell(existing);
+    body = upsert_section(
+        &body,
+        WRITE_PIPELINE_SECTION_START,
+        WRITE_PIPELINE_SECTION_END,
+        &section,
+    );
     Ok(rebuild_comment_shell(&body))
 }
 
@@ -275,6 +357,8 @@ fn rebuild_comment_shell(body: &str) -> String {
     for (start, end) in [
         (PROXY_SECTION_START, PROXY_SECTION_END),
         (HNSW_SECTION_START, HNSW_SECTION_END),
+        (RANKING_QUALITY_SECTION_START, RANKING_QUALITY_SECTION_END),
+        (WRITE_PIPELINE_SECTION_START, WRITE_PIPELINE_SECTION_END),
         (ENV_SECTION_START, ENV_SECTION_END),
     ] {
         if let Some(block) = extract_section_block(body, start, end) {
@@ -383,6 +467,8 @@ fn suite_sort_key(id: &str) -> u8 {
     match id {
         "proxy" => 0,
         "hnsw" => 1,
+        "ranking_quality" => 2,
+        "write_pipeline" => 3,
         _ => 9,
     }
 }
@@ -623,6 +709,109 @@ fn render_hnsw_section(data: &HnswBenchmarkData) -> Result<String, String> {
     Ok(body.join("\n"))
 }
 
+fn render_ranking_quality_section(data: &RankingQualityBenchmarkData) -> Result<String, String> {
+    let run = data
+        .runs
+        .as_ref()
+        .and_then(|runs| runs.first())
+        .ok_or_else(|| "ranking-quality benchmark data has no runs".to_string())?;
+    let status = normalize_status(run.status.as_deref().unwrap_or("unknown"));
+    let metrics = run.metrics.as_ref();
+    let p5 = metrics
+        .and_then(|m| m.precision_at_5)
+        .map(|v| format!("{v:.3}"))
+        .unwrap_or_else(|| "n/a".into());
+    let recall = metrics
+        .and_then(|m| m.recall_at_10)
+        .map(|v| format!("{v:.3}"))
+        .unwrap_or_else(|| "n/a".into());
+    let mrr = metrics
+        .and_then(|m| m.mrr)
+        .map(|v| format!("{v:.3}"))
+        .unwrap_or_else(|| "n/a".into());
+    let meta = SuiteMeta {
+        id: "ranking_quality".into(),
+        name: "Ranking quality".into(),
+        primary: format!("`{p5}` (Precision@5)"),
+        delta: "—".into(),
+        status: status.to_string(),
+    };
+
+    let mut body = vec![
+        encode_suite_meta(&meta),
+        format!(
+            "<details{}>\n<summary>Deep Dive: Ranking quality</summary>\n<br>\n",
+            details_open_attr(status)
+        ),
+        format!("* **Precision@5:** `{p5}`"),
+        format!("* **Recall@10:** `{recall}`"),
+        format!("* **MRR:** `{mrr}`"),
+    ];
+    if let Some(count) = run.query_count {
+        body.push(format!("* **Queries:** {count}"));
+    }
+    if let Some(note) = run
+        .gate_summary
+        .as_ref()
+        .and_then(|g| g.get("note"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        body.push(format!("\n> {}", escape_cell(Some(note))));
+    }
+    body.push("</details>".to_string());
+    Ok(body.join("\n"))
+}
+
+fn render_write_pipeline_section(data: &WritePipelineBenchmarkData) -> Result<String, String> {
+    let run = data
+        .runs
+        .as_ref()
+        .and_then(|runs| runs.first())
+        .ok_or_else(|| "write-pipeline benchmark data has no runs".to_string())?;
+    let status = normalize_status(run.status.as_deref().unwrap_or("unknown"));
+    let metrics = run.metrics.as_ref();
+    let p95 = metrics
+        .and_then(|m| m.latency_ms_p95)
+        .map(|v| format!("`{v:.1} ms`"))
+        .unwrap_or_else(|| "n/a".into());
+    let p50 = metrics
+        .and_then(|m| m.latency_ms_p50)
+        .map(|v| format!("`{v:.1} ms`"))
+        .unwrap_or_else(|| "n/a".into());
+    let meta = SuiteMeta {
+        id: "write_pipeline".into(),
+        name: "Write pipeline".into(),
+        primary: format!("{p95} (p95)"),
+        delta: "—".into(),
+        status: status.to_string(),
+    };
+
+    let mut body = vec![
+        encode_suite_meta(&meta),
+        format!(
+            "<details{}>\n<summary>Deep Dive: Write pipeline</summary>\n<br>\n",
+            details_open_attr(status)
+        ),
+        format!("* **p50:** {p50}"),
+        format!("* **p95:** {p95} *(SLA <= {WRITE_P95_SLA_MS} ms)*"),
+    ];
+    if let Some(iterations) = run.iterations {
+        body.push(format!("* **Iterations:** {iterations}"));
+    }
+    if let Some(note) = run
+        .gate_summary
+        .as_ref()
+        .and_then(|g| g.get("note"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        body.push(format!("\n> {}", escape_cell(Some(note))));
+    }
+    body.push("</details>".to_string());
+    Ok(body.join("\n"))
+}
+
 fn render_env_section(data: &BenchmarkData) -> Option<String> {
     let run = data.runs.as_ref().and_then(|runs| runs.first())?;
     let baseline_sha = data.baseline_sha.as_deref();
@@ -652,6 +841,54 @@ pub fn render_hnsw_data_pr_body(
         hnsw: Some(data),
         hnsw_run_url: run_url,
         hnsw_run_number: Some(run_number),
+        ranking: None,
+        ranking_run_url: None,
+        ranking_run_number: None,
+        write: None,
+        write_run_url: None,
+        write_run_number: None,
+    })
+}
+
+pub fn render_ranking_quality_data_pr_body(
+    data: &RankingQualityBenchmarkData,
+    run_url: Option<&str>,
+    run_number: i64,
+) -> String {
+    render_combined_data_pr_body(CombinedDataPrInput {
+        proxy: None,
+        proxy_run_url: None,
+        proxy_run_number: None,
+        hnsw: None,
+        hnsw_run_url: None,
+        hnsw_run_number: None,
+        ranking: Some(data),
+        ranking_run_url: run_url,
+        ranking_run_number: Some(run_number),
+        write: None,
+        write_run_url: None,
+        write_run_number: None,
+    })
+}
+
+pub fn render_write_pipeline_data_pr_body(
+    data: &WritePipelineBenchmarkData,
+    run_url: Option<&str>,
+    run_number: i64,
+) -> String {
+    render_combined_data_pr_body(CombinedDataPrInput {
+        proxy: None,
+        proxy_run_url: None,
+        proxy_run_number: None,
+        hnsw: None,
+        hnsw_run_url: None,
+        hnsw_run_number: None,
+        ranking: None,
+        ranking_run_url: None,
+        ranking_run_number: None,
+        write: Some(data),
+        write_run_url: run_url,
+        write_run_number: Some(run_number),
     })
 }
 
@@ -745,6 +982,100 @@ fn render_hnsw_cells_table(results: &[HnswSizeResult]) -> String {
         ],
         &rows,
     )
+}
+
+fn render_ranking_quality_data_section(
+    data: &RankingQualityBenchmarkData,
+    run_url: Option<&str>,
+    run_number: Option<i64>,
+) -> String {
+    let latest = data.runs.as_ref().and_then(|runs| runs.first());
+    let short_sha = latest
+        .and_then(|run| run.short_sha.as_deref().or(run.sha.as_deref()))
+        .map(|sha| sanitize_sha(Some(sha)))
+        .unwrap_or_else(|| sanitize_sha(None));
+    let p5 = latest
+        .and_then(|run| run.metrics.as_ref())
+        .and_then(|m| m.precision_at_5)
+        .map(|v| format!("`{v:.4}`"))
+        .unwrap_or_else(|| "`n/a`".into());
+    let recall = latest
+        .and_then(|run| run.metrics.as_ref())
+        .and_then(|m| m.recall_at_10)
+        .map(|v| format!("`{v:.4}`"))
+        .unwrap_or_else(|| "`n/a`".into());
+    let number = run_number
+        .or(latest.and_then(|r| r.run_number))
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "?".to_string());
+
+    let mut lines = vec![
+        "### Ranking-quality suite".to_string(),
+        String::new(),
+        markdown_table(
+            &["Field", "Value"],
+            &[
+                vec!["Run number".to_string(), number],
+                vec!["Head SHA".to_string(), short_sha],
+                vec!["Precision@5".to_string(), p5],
+                vec!["Recall@10".to_string(), recall],
+                vec![
+                    "Path".to_string(),
+                    format!("`{}`", crate::config::RANKING_QUALITY_BENCHMARK_DATA_PATH),
+                ],
+            ],
+        ),
+    ];
+    if let Some(url) = run_url.or(latest.and_then(|run| run.run_url.as_deref())) {
+        lines.push(String::new());
+        lines.push(format!("- [Harness Memory Benchmarks workflow run]({url})"));
+    }
+    lines.join("\n")
+}
+
+fn render_write_pipeline_data_section(
+    data: &WritePipelineBenchmarkData,
+    run_url: Option<&str>,
+    run_number: Option<i64>,
+) -> String {
+    let latest = data.runs.as_ref().and_then(|runs| runs.first());
+    let short_sha = latest
+        .and_then(|run| run.short_sha.as_deref().or(run.sha.as_deref()))
+        .map(|sha| sanitize_sha(Some(sha)))
+        .unwrap_or_else(|| sanitize_sha(None));
+    let p95 = latest
+        .and_then(|run| run.metrics.as_ref())
+        .and_then(|m| m.latency_ms_p95)
+        .map(|v| format!("`{v:.2} ms`"))
+        .unwrap_or_else(|| "`n/a`".into());
+    let number = run_number
+        .or(latest.and_then(|r| r.run_number))
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "?".to_string());
+
+    let mut lines = vec![
+        "### Write-pipeline suite".to_string(),
+        String::new(),
+        markdown_table(
+            &["Field", "Value"],
+            &[
+                vec!["Run number".to_string(), number],
+                vec!["Head SHA".to_string(), short_sha],
+                vec!["p95 latency".to_string(), p95],
+                vec![
+                    "Path".to_string(),
+                    format!("`{}`", crate::config::WRITE_PIPELINE_BENCHMARK_DATA_PATH),
+                ],
+            ],
+        ),
+        String::new(),
+        format!("_SLA: p95 <= {WRITE_P95_SLA_MS} ms._"),
+    ];
+    if let Some(url) = run_url.or(latest.and_then(|run| run.run_url.as_deref())) {
+        lines.push(String::new());
+        lines.push(format!("- [Harness Memory Benchmarks workflow run]({url})"));
+    }
+    lines.join("\n")
 }
 
 fn render_compact_brand() -> String {

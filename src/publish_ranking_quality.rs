@@ -1,17 +1,21 @@
+//! Publish ranking-quality benchmark history to the harness repo.
+
 use std::fs;
 
-use crate::artifact::{extract_artifact_zip, validate_badge_svg};
-use crate::config::{BADGE_PATH, BENCHMARK_DATA_PATH, DATA_PR_BRANCH};
+use crate::config::{DATA_PR_BRANCH, RANKING_QUALITY_BENCHMARK_DATA_PATH};
 use crate::error::{bot_err, Result};
 use crate::github::{
     bot_commit_message, split_repo, CommitFile, CommitFilesRequest, CreateBranch, GitHubClient,
     RepoPathRef, RepoRef,
 };
-use crate::model::{BenchmarkData, DispatchPayload};
-use crate::publish_shared::{proxy_head_already_on_branch, upsert_combined_data_pr, UpsertDataPr};
-use crate::validate::{
-    cross_check_artifact_run, max_published_run_number, published_sha_exists, validate_file,
-    validate_payload,
+use crate::model::{DispatchPayload, RankingQualityBenchmarkData};
+use crate::publish_shared::{
+    ranking_quality_head_already_on_branch, upsert_combined_data_pr, UpsertDataPr,
+};
+use crate::ranking_quality_artifact::extract_ranking_quality_artifact_zip;
+use crate::ranking_quality_validate::{
+    cross_check_ranking_quality_artifact_run, ranking_quality_max_published_run_number,
+    ranking_quality_published_sha_exists, validate_ranking_quality_file,
 };
 use crate::verify;
 
@@ -21,13 +25,13 @@ pub struct PublishResult {
     pub branch: String,
 }
 
-pub async fn publish_benchmark_data(
+pub async fn publish_ranking_quality_benchmark_data(
     client: &GitHubClient,
     repo_full: &str,
     payload: &DispatchPayload,
     dry_run: bool,
 ) -> Result<PublishResult> {
-    let run = verify::verify_dispatch(client, repo_full, payload).await?;
+    let run = verify::verify_hnsw_dispatch(client, repo_full, payload).await?;
     let (owner, repo) = split_repo(repo_full)?;
     let repo_ref = RepoRef::new(owner, repo);
     let branch = DATA_PR_BRANCH.to_string();
@@ -39,7 +43,7 @@ pub async fn publish_benchmark_data(
     ensure_not_replay(client, repo_ref, payload, head_sha).await?;
 
     if let Some(existing) = client.find_open_pr(repo_ref, DATA_PR_BRANCH).await? {
-        if proxy_head_already_on_branch(client, repo_ref, head_sha).await? {
+        if ranking_quality_head_already_on_branch(client, repo_ref, head_sha).await? {
             return Ok(PublishResult {
                 skipped: true,
                 pr_url: existing
@@ -52,20 +56,21 @@ pub async fn publish_benchmark_data(
     }
 
     let zip = client
-        .download_artifact_zip(repo_ref, payload.run_id)
+        .download_ranking_quality_artifact_zip(repo_ref, payload.run_id)
         .await?;
-    let extracted = extract_artifact_zip(&zip)?;
-    validate_file(&extracted.json_path)?;
-    let badge_bytes =
-        fs::read(&extracted.badge_path).map_err(|err| bot_err(format!("read badge: {err}")))?;
-    validate_badge_svg(&badge_bytes)?;
+    let extracted = extract_ranking_quality_artifact_zip(&zip)?;
+    validate_ranking_quality_file(&extracted.json_path)?;
 
     let json_bytes = fs::read(&extracted.json_path)
-        .map_err(|err| bot_err(format!("read benchmark json: {err}")))?;
-    let benchmark_data: BenchmarkData = serde_json::from_slice(&json_bytes)
-        .map_err(|err| bot_err(format!("decode benchmark json: {err}")))?;
-    validate_payload(&benchmark_data)?;
-    cross_check_artifact_run(&benchmark_data, &run, payload.run_id, payload.run_number)?;
+        .map_err(|err| bot_err(format!("read ranking-quality benchmark json: {err}")))?;
+    let benchmark_data: RankingQualityBenchmarkData = serde_json::from_slice(&json_bytes)
+        .map_err(|err| bot_err(format!("decode ranking-quality benchmark json: {err}")))?;
+    cross_check_ranking_quality_artifact_run(
+        &benchmark_data,
+        &run,
+        payload.run_id,
+        payload.run_number,
+    )?;
 
     if dry_run {
         return Ok(PublishResult {
@@ -87,7 +92,7 @@ pub async fn publish_benchmark_data(
     }
 
     let subject = format!(
-        "chore(bench): proxy benchmark data update (run #{})",
+        "chore(bench): ranking-quality benchmark data update (run #{})",
         payload.run_number
     );
     let message = bot_commit_message(&subject);
@@ -97,16 +102,10 @@ pub async fn publish_benchmark_data(
             CommitFilesRequest {
                 branch: DATA_PR_BRANCH,
                 message: &message,
-                files: &[
-                    CommitFile {
-                        path: BENCHMARK_DATA_PATH,
-                        bytes: &json_bytes,
-                    },
-                    CommitFile {
-                        path: BADGE_PATH,
-                        bytes: &badge_bytes,
-                    },
-                ],
+                files: &[CommitFile {
+                    path: RANKING_QUALITY_BENCHMARK_DATA_PATH,
+                    bytes: &json_bytes,
+                }],
             },
         )
         .await?;
@@ -114,12 +113,12 @@ pub async fn publish_benchmark_data(
     let pr = upsert_combined_data_pr(UpsertDataPr {
         client,
         repo: repo_ref,
-        proxy_run_url: run.html_url.as_deref(),
-        proxy_run_number: Some(payload.run_number),
+        proxy_run_url: None,
+        proxy_run_number: None,
         hnsw_run_url: None,
         hnsw_run_number: None,
-        ranking_run_url: None,
-        ranking_run_number: None,
+        ranking_run_url: run.html_url.as_deref(),
+        ranking_run_number: Some(payload.run_number),
         write_run_url: None,
         write_run_number: None,
     })
@@ -144,19 +143,19 @@ async fn ensure_not_replay(
     let published = client
         .get_file_bytes(RepoPathRef {
             repo,
-            path: BENCHMARK_DATA_PATH,
+            path: RANKING_QUALITY_BENCHMARK_DATA_PATH,
             git_ref: "main",
         })
         .await?;
     let Some(bytes) = published else {
         return Ok(());
     };
-    let data: BenchmarkData = serde_json::from_slice(&bytes)
-        .map_err(|err| bot_err(format!("decode published benchmark data: {err}")))?;
-    if published_sha_exists(&data, head_sha) {
+    let data: RankingQualityBenchmarkData = serde_json::from_slice(&bytes)
+        .map_err(|err| bot_err(format!("decode published ranking-quality data: {err}")))?;
+    if ranking_quality_published_sha_exists(&data, head_sha) {
         return Err(bot_err("head_sha already published on main".to_string()));
     }
-    if let Some(max_run) = max_published_run_number(&data) {
+    if let Some(max_run) = ranking_quality_max_published_run_number(&data) {
         if payload.run_number <= max_run {
             return Err(bot_err(format!(
                 "run_number {} is not newer than published max {}",
