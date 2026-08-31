@@ -90,15 +90,28 @@ fn validate_write_pipeline_run(run: &WritePipelineBenchmarkRun, index: usize) ->
         .metrics
         .as_ref()
         .ok_or_else(|| bot_err(format!("runs[{index}].metrics required")))?;
+    let p50 = metrics
+        .latency_ms_p50
+        .ok_or_else(|| bot_err(format!("runs[{index}].metrics.latency_ms_p50 required")))?;
+    let p95 = metrics
+        .latency_ms_p95
+        .ok_or_else(|| bot_err(format!("runs[{index}].metrics.latency_ms_p95 required")))?;
+    let p99 = metrics
+        .latency_ms_p99
+        .ok_or_else(|| bot_err(format!("runs[{index}].metrics.latency_ms_p99 required")))?;
     for (name, value) in [
-        ("latency_ms_p50", metrics.latency_ms_p50),
-        ("latency_ms_p95", metrics.latency_ms_p95),
-        ("latency_ms_p99", metrics.latency_ms_p99),
+        ("latency_ms_p50", p50),
+        ("latency_ms_p95", p95),
+        ("latency_ms_p99", p99),
     ] {
-        let v = value.ok_or_else(|| bot_err(format!("runs[{index}].metrics.{name} required")))?;
-        if v < 0.0 || !v.is_finite() {
+        if value < 0.0 || !value.is_finite() {
             return Err(bot_err(format!("runs[{index}].metrics.{name} invalid")));
         }
+    }
+    if p50 > p95 || p95 > p99 {
+        return Err(bot_err(format!(
+            "runs[{index}].metrics latency percentiles must satisfy p50 <= p95 <= p99"
+        )));
     }
     if let Some(p95) = metrics.latency_ms_p95 {
         if p95 > WRITE_P95_SLA_MS * 10.0 {
@@ -117,7 +130,7 @@ pub fn cross_check_write_pipeline_artifact_run(
     expected_run_number: i64,
 ) -> Result<()> {
     cross_check_memory_suite_run(
-        payload.runs.as_ref().and_then(|runs| runs.first()),
+        payload.runs.as_deref(),
         workflow,
         run_id,
         expected_run_number,
@@ -194,5 +207,18 @@ mod tests {
         let mut payload = sample_payload();
         payload.benchmark = Some("proxy".into());
         assert!(validate_write_pipeline_payload(&payload).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_percentile_ordering() {
+        let mut payload = sample_payload();
+        payload.runs.as_mut().unwrap()[0]
+            .metrics
+            .as_mut()
+            .unwrap()
+            .latency_ms_p95 = Some(5.0);
+        let error =
+            validate_write_pipeline_payload(&payload).expect_err("p95 below p50 must be rejected");
+        assert!(error.to_string().contains("p50 <= p95 <= p99"));
     }
 }

@@ -109,7 +109,7 @@ pub fn cross_check_ranking_quality_artifact_run(
     expected_run_number: i64,
 ) -> Result<()> {
     cross_check_memory_suite_run(
-        payload.runs.as_ref().and_then(|runs| runs.first()),
+        payload.runs.as_deref(),
         workflow,
         run_id,
         expected_run_number,
@@ -129,7 +129,7 @@ pub fn ranking_quality_max_published_run_number(data: &RankingQualityBenchmarkDa
 }
 
 pub(crate) fn cross_check_memory_suite_run<T>(
-    latest: Option<&T>,
+    runs: Option<&[T]>,
     workflow: &WorkflowRun,
     run_id: i64,
     expected_run_number: i64,
@@ -138,8 +138,10 @@ pub(crate) fn cross_check_memory_suite_run<T>(
 where
     T: MemorySuiteRunFields,
 {
-    let latest =
-        latest.ok_or_else(|| bot_err(format!("{suite} runs must contain latest entry")))?;
+    let runs = runs.ok_or_else(|| bot_err(format!("{suite} runs must be an array")))?;
+    let latest = runs
+        .first()
+        .ok_or_else(|| bot_err(format!("{suite} runs must contain latest entry")))?;
 
     let head_sha = workflow
         .head_sha
@@ -163,11 +165,48 @@ where
         )));
     }
 
-    let marker = format!("/actions/runs/{run_id}");
     let run_url = latest
         .run_url()
         .ok_or_else(|| bot_err("runs[0].run_url required".to_string()))?;
-    if !run_url.contains(&marker) {
+    verify_dispatch_run_url(run_url, workflow, run_id, suite)?;
+
+    let mut seen_sha = HashSet::new();
+    for (index, run) in runs.iter().enumerate() {
+        if let Some(run_number) = run.run_number() {
+            if run_number > expected_run_number {
+                return Err(bot_err(format!(
+                    "{suite} runs[{index}].run_number exceeds verified dispatch run_number"
+                )));
+            }
+        }
+        if let Some(sha) = run.sha() {
+            if !seen_sha.insert(sha.to_lowercase()) {
+                return Err(bot_err(format!(
+                    "{suite} runs[{index}].sha duplicates an earlier run"
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn verify_dispatch_run_url(
+    run_url: &str,
+    workflow: &WorkflowRun,
+    run_id: i64,
+    suite: &str,
+) -> Result<()> {
+    if let Some(expected) = workflow.html_url.as_deref() {
+        if run_url.trim() != expected.trim() {
+            return Err(bot_err(format!(
+                "{suite} runs[0].run_url must match verified workflow html_url"
+            )));
+        }
+        return Ok(());
+    }
+
+    let suffix = format!("/actions/runs/{run_id}");
+    if !run_url.trim().ends_with(&suffix) {
         return Err(bot_err(format!(
             "{suite} runs[0].run_url must reference dispatch run_id"
         )));
@@ -221,7 +260,19 @@ fn require_sha_field(value: &str, field: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{RankingQualityBenchmarkMetrics, RankingQualityBenchmarkRun};
+    use crate::model::{RankingQualityBenchmarkMetrics, RankingQualityBenchmarkRun, WorkflowRun};
+
+    fn verified_workflow() -> WorkflowRun {
+        WorkflowRun {
+            conclusion: Some("success".into()),
+            head_branch: Some("main".into()),
+            head_sha: Some("abcdef1".into()),
+            run_number: Some(3),
+            name: Some("Memory Benchmarks".into()),
+            path: Some(".github/workflows/memory-benchmark.yml".into()),
+            html_url: Some("https://github.com/Rick1330/ibex-harness/actions/runs/99".into()),
+        }
+    }
 
     fn sample_payload() -> RankingQualityBenchmarkData {
         RankingQualityBenchmarkData {
@@ -260,5 +311,50 @@ mod tests {
         let mut payload = sample_payload();
         payload.benchmark = Some("proxy".into());
         assert!(validate_ranking_quality_payload(&payload).is_err());
+    }
+
+    #[test]
+    fn cross_check_rejects_future_run_number_in_history() {
+        let mut payload = sample_payload();
+        let template = payload.runs.as_ref().unwrap()[0].clone();
+        payload
+            .runs
+            .as_mut()
+            .unwrap()
+            .push(RankingQualityBenchmarkRun {
+                sha: Some("fedcba9".into()),
+                short_sha: Some("fedcba9".into()),
+                run_number: Some(999),
+                ..template
+            });
+        let error = cross_check_ranking_quality_artifact_run(&payload, &verified_workflow(), 99, 3)
+            .expect_err("future run_number must be rejected");
+        assert!(error.to_string().contains("run_number exceeds"));
+    }
+
+    #[test]
+    fn cross_check_rejects_duplicate_sha_in_history() {
+        let mut payload = sample_payload();
+        let duplicate = payload.runs.as_ref().unwrap()[0].clone();
+        payload.runs.as_mut().unwrap().push(duplicate);
+        let error = cross_check_ranking_quality_artifact_run(&payload, &verified_workflow(), 99, 3)
+            .expect_err("duplicate sha must be rejected");
+        assert!(error.to_string().contains("duplicates"));
+    }
+
+    #[test]
+    fn cross_check_rejects_run_url_that_only_contains_marker() {
+        let mut payload = sample_payload();
+        payload.runs.as_mut().unwrap()[0].run_url =
+            Some("https://evil.example/actions/runs/99/extra".into());
+        let error = cross_check_ranking_quality_artifact_run(&payload, &verified_workflow(), 99, 3)
+            .expect_err("run_url must match verified workflow html_url");
+        assert!(error.to_string().contains("html_url"));
+    }
+
+    #[test]
+    fn cross_check_accepts_matching_workflow_html_url() {
+        cross_check_ranking_quality_artifact_run(&sample_payload(), &verified_workflow(), 99, 3)
+            .expect("valid artifact cross-check");
     }
 }
