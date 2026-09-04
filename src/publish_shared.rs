@@ -3,18 +3,21 @@
 use serde_json::Value;
 
 use crate::config::{
-    BENCHMARK_DATA_LABEL, BENCHMARK_DATA_PATH, DATA_PR_BRANCH, HNSW_BENCHMARK_DATA_LABEL,
-    HNSW_BENCHMARK_DATA_PATH, RANKING_QUALITY_BENCHMARK_DATA_LABEL,
+    BENCHMARK_DATA_LABEL, BENCHMARK_DATA_PATH, DATA_PR_BRANCH,
+    EXTRACTION_QUALITY_BENCHMARK_DATA_LABEL, EXTRACTION_QUALITY_BENCHMARK_DATA_PATH,
+    HNSW_BENCHMARK_DATA_LABEL, HNSW_BENCHMARK_DATA_PATH, RANKING_QUALITY_BENCHMARK_DATA_LABEL,
     RANKING_QUALITY_BENCHMARK_DATA_PATH, WRITE_PIPELINE_BENCHMARK_DATA_LABEL,
     WRITE_PIPELINE_BENCHMARK_DATA_PATH,
 };
 use crate::error::{bot_err, Result};
+use crate::extraction_quality_validate::extraction_quality_published_sha_exists;
 use crate::github::{
     GitHubClient, IssueRef, OpenPullRequest, RepoPathRef, RepoRef, UpdatePullRequest,
 };
 use crate::hnsw_validate::hnsw_published_sha_exists;
 use crate::model::{
-    BenchmarkData, HnswBenchmarkData, RankingQualityBenchmarkData, WritePipelineBenchmarkData,
+    BenchmarkData, ExtractionQualityBenchmarkData, HnswBenchmarkData, RankingQualityBenchmarkData,
+    WritePipelineBenchmarkData,
 };
 use crate::ranking_quality_validate::ranking_quality_published_sha_exists;
 use crate::render::{render_combined_data_pr_body, CombinedDataPrInput};
@@ -26,6 +29,7 @@ pub struct PendingSuites {
     pub hnsw: Option<HnswBenchmarkData>,
     pub ranking: Option<RankingQualityBenchmarkData>,
     pub write: Option<WritePipelineBenchmarkData>,
+    pub extraction: Option<ExtractionQualityBenchmarkData>,
 }
 
 impl PendingSuites {
@@ -34,6 +38,7 @@ impl PendingSuites {
             && self.hnsw.is_none()
             && self.ranking.is_none()
             && self.write.is_none()
+            && self.extraction.is_none()
     }
 }
 
@@ -50,6 +55,9 @@ pub fn data_pr_title(suites: &PendingSuites) -> String {
     }
     if suites.write.is_some() {
         names.push("write-pipeline");
+    }
+    if suites.extraction.is_some() {
+        names.push("extraction-quality");
     }
     if names.is_empty() {
         return "chore(bench): publish benchmark data".to_string();
@@ -149,6 +157,29 @@ pub async fn load_write_pipeline_from_ref(
     Ok(Some(data))
 }
 
+pub async fn load_extraction_quality_from_ref(
+    client: &GitHubClient,
+    repo: RepoRef<'_>,
+    git_ref: &str,
+) -> Result<Option<ExtractionQualityBenchmarkData>> {
+    let Some(bytes) = client
+        .get_file_bytes(RepoPathRef {
+            repo,
+            path: EXTRACTION_QUALITY_BENCHMARK_DATA_PATH,
+            git_ref,
+        })
+        .await?
+    else {
+        return Ok(None);
+    };
+    let data: ExtractionQualityBenchmarkData = serde_json::from_slice(&bytes).map_err(|err| {
+        bot_err(format!(
+            "decode {EXTRACTION_QUALITY_BENCHMARK_DATA_PATH}@{git_ref}: {err}"
+        ))
+    })?;
+    Ok(Some(data))
+}
+
 pub async fn proxy_head_already_on_branch(
     client: &GitHubClient,
     repo: RepoRef<'_>,
@@ -193,17 +224,30 @@ pub async fn write_pipeline_head_already_on_branch(
     Ok(write_pipeline_published_sha_exists(&data, head_sha))
 }
 
+pub async fn extraction_quality_head_already_on_branch(
+    client: &GitHubClient,
+    repo: RepoRef<'_>,
+    head_sha: &str,
+) -> Result<bool> {
+    let Some(data) = load_extraction_quality_from_ref(client, repo, DATA_PR_BRANCH).await? else {
+        return Ok(false);
+    };
+    Ok(extraction_quality_published_sha_exists(&data, head_sha))
+}
+
 /// Suites whose branch tip differs from `main` (pending publish).
 pub async fn pending_suites(client: &GitHubClient, repo: RepoRef<'_>) -> Result<PendingSuites> {
     let proxy = diff_proxy(client, repo).await?;
     let hnsw = diff_hnsw(client, repo).await?;
     let ranking = diff_ranking(client, repo).await?;
     let write = diff_write(client, repo).await?;
+    let extraction = diff_extraction(client, repo).await?;
     Ok(PendingSuites {
         proxy,
         hnsw,
         ranking,
         write,
+        extraction,
     })
 }
 
@@ -257,6 +301,20 @@ async fn diff_write(
     }
 }
 
+async fn diff_extraction(
+    client: &GitHubClient,
+    repo: RepoRef<'_>,
+) -> Result<Option<ExtractionQualityBenchmarkData>> {
+    match (
+        load_extraction_quality_from_ref(client, repo, DATA_PR_BRANCH).await?,
+        load_extraction_quality_from_ref(client, repo, "main").await?,
+    ) {
+        (Some(branch), Some(main)) if extraction_bytes_differ(&branch, &main) => Ok(Some(branch)),
+        (Some(branch), None) => Ok(Some(branch)),
+        _ => Ok(None),
+    }
+}
+
 fn branch_bytes_differ(left: &BenchmarkData, right: &BenchmarkData) -> bool {
     serde_json::to_vec(left).ok() != serde_json::to_vec(right).ok()
 }
@@ -279,6 +337,13 @@ fn write_bytes_differ(
     serde_json::to_vec(left).ok() != serde_json::to_vec(right).ok()
 }
 
+fn extraction_bytes_differ(
+    left: &ExtractionQualityBenchmarkData,
+    right: &ExtractionQualityBenchmarkData,
+) -> bool {
+    serde_json::to_vec(left).ok() != serde_json::to_vec(right).ok()
+}
+
 pub struct UpsertDataPr<'a> {
     pub client: &'a GitHubClient,
     pub repo: RepoRef<'a>,
@@ -290,6 +355,8 @@ pub struct UpsertDataPr<'a> {
     pub ranking_run_number: Option<i64>,
     pub write_run_url: Option<&'a str>,
     pub write_run_number: Option<i64>,
+    pub extraction_run_url: Option<&'a str>,
+    pub extraction_run_number: Option<i64>,
 }
 
 /// Refresh title/body from pending suite files on the shared branch; open or update the PR.
@@ -315,6 +382,9 @@ pub async fn upsert_combined_data_pr(args: UpsertDataPr<'_>) -> Result<Value> {
         write: pending.write.as_ref(),
         write_run_url: args.write_run_url,
         write_run_number: args.write_run_number,
+        extraction: pending.extraction.as_ref(),
+        extraction_run_url: args.extraction_run_url,
+        extraction_run_number: args.extraction_run_number,
     });
     let labels = suite_labels(&pending);
 
@@ -380,6 +450,9 @@ pub fn suite_labels(pending: &PendingSuites) -> Vec<&'static str> {
     }
     if pending.write.is_some() {
         labels.push(WRITE_PIPELINE_BENCHMARK_DATA_LABEL);
+    }
+    if pending.extraction.is_some() {
+        labels.push(EXTRACTION_QUALITY_BENCHMARK_DATA_LABEL);
     }
     labels
 }

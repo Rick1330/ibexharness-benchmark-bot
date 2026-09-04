@@ -121,6 +121,8 @@ pub async fn publish_ranking_quality_benchmark_data(
         ranking_run_number: Some(payload.run_number),
         write_run_url: None,
         write_run_number: None,
+        extraction_run_url: None,
+        extraction_run_number: None,
     })
     .await?;
 

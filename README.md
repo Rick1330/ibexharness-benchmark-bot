@@ -17,10 +17,19 @@ GitHub App (Rust) · publishes benchmark data to <a href="https://github.com/Ric
 | `publish` | Validate proxy artifact; commit onto shared `chore/bench-data-publish`; open/update one data PR |
 | `verify-hnsw-dispatch` | Re-verify Memory Benchmarks dispatch |
 | `publish-hnsw` | Validate HNSW artifact; commit onto the **same** shared data PR (HNSW JSON only) |
+| `publish-ranking` | Validate ranking-quality artifact; commit onto the shared data PR |
+| `publish-write` | Validate write-pipeline artifact; commit onto the shared data PR |
+| `publish-extraction` | Validate extraction-quality artifact; commit onto the shared data PR |
 | `post-pr-comment` | Upsert **Proxy** suite into the shared sticky comment (`IBEX_BOT_COMMENT` matrix + deep dive) |
 | `render-pr-comment` | Render Proxy sticky comment to stdout |
 | `post-hnsw-pr-comment` | Upsert **Memory HNSW** suite into the same sticky comment |
 | `render-hnsw-pr-comment` | Render Memory HNSW sticky comment to stdout |
+| `post-ranking-pr-comment` | Upsert **Ranking quality** into the sticky comment |
+| `render-ranking-pr-comment` | Render Ranking quality sticky comment to stdout |
+| `post-write-pr-comment` | Upsert **Write pipeline** into the sticky comment |
+| `render-write-pr-comment` | Render Write pipeline sticky comment to stdout |
+| `post-extraction-pr-comment` | Upsert **Extraction quality** into the sticky comment |
+| `render-extraction-pr-comment` | Render Extraction quality sticky comment to stdout |
 
 [Setup](docs/APP_SETUP.md) · [Runbook](docs/RUNBOOK.md) · [Threat model](docs/THREAT_MODEL.md)
 

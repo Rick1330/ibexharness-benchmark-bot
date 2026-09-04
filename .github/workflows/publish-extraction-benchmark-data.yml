@@ -1,0 +1,137 @@
+name: Publish extraction benchmark data
+
+on:
+  repository_dispatch:
+    types: [extraction_benchmark_main_complete]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Harness Memory Benchmarks workflow run ID
+        required: true
+      head_sha:
+        description: Commit SHA from that run
+        required: true
+      run_number:
+        description: Harness workflow run number (not run ID)
+        required: true
+      dry_run:
+        description: Validate only, do not open PR
+        type: boolean
+        default: false
+
+concurrency:
+  group: publish-extraction-benchmark-${{ github.event.client_payload.run_id || github.event.inputs.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: publish-extraction-benchmark-data
+    runs-on: ubuntu-latest
+    environment: publish
+    permissions:
+      contents: read
+    steps:
+      - name: Require pinned release
+        env:
+          BOT_RELEASE_SHA: ${{ vars.BOT_RELEASE_SHA }}
+        run: test -n "${BOT_RELEASE_SHA}"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ vars.BOT_RELEASE_SHA }}
+          persist-credentials: false
+
+      - name: Harden the runner (Audit outbound calls)
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2.8.2
+        with:
+          workspaces: .
+
+      - name: Build bot
+        run: cargo build --release
+
+      - name: Verify HNSW dispatch (repository_dispatch)
+        if: github.event_name == 'repository_dispatch'
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+          DISPATCH_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+        run: |
+          ./target/release/ibex-benchmark-bot verify-hnsw-dispatch \
+            --payload "$DISPATCH_PAYLOAD"
+
+      - name: Verify HNSW dispatch (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+          DISPATCH_PAYLOAD: ${{ toJson(github.event.inputs) }}
+        run: |
+          ./target/release/ibex-benchmark-bot verify-hnsw-dispatch \
+            --payload "$DISPATCH_PAYLOAD"
+
+      - name: Publish extraction-quality data PR (repository_dispatch)
+        if: github.event_name == 'repository_dispatch'
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+          DISPATCH_PAYLOAD: ${{ toJson(github.event.client_payload) }}
+        run: |
+          ./target/release/ibex-benchmark-bot publish-extraction \
+            --payload "$DISPATCH_PAYLOAD"
+
+      - name: Publish extraction-quality data PR (workflow_dispatch)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run != 'true'
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+          DISPATCH_PAYLOAD: ${{ toJson(github.event.inputs) }}
+        run: |
+          ./target/release/ibex-benchmark-bot publish-extraction \
+            --payload "$DISPATCH_PAYLOAD"
+
+      - name: Dry run validation only
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.dry_run == 'true'
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          INSTALLATION_ID: ${{ secrets.INSTALLATION_ID }}
+          DISPATCH_PAYLOAD: ${{ toJson(github.event.inputs) }}
+        run: |
+          ./target/release/ibex-benchmark-bot publish-extraction \
+            --payload "$DISPATCH_PAYLOAD" \
+            --dry-run
+
+      - name: Workflow summary
+        if: always()
+        env:
+          AUDIT_EVENT: ${{ github.event_name }}
+          AUDIT_ACTOR: ${{ github.actor }}
+          AUDIT_BOT_RELEASE_SHA: ${{ vars.BOT_RELEASE_SHA }}
+          AUDIT_RUN_ID: ${{ github.event.client_payload.run_id || github.event.inputs.run_id }}
+          AUDIT_HEAD_SHA: ${{ github.event.client_payload.head_sha || github.event.inputs.head_sha }}
+          AUDIT_RUN_NUMBER: ${{ github.event.client_payload.run_number || github.event.inputs.run_number }}
+        run: |
+          {
+            echo "## Extraction-quality benchmark publish audit"
+            echo "- event: ${AUDIT_EVENT}"
+            echo "- actor: ${AUDIT_ACTOR}"
+            echo "- bot_release_sha: ${AUDIT_BOT_RELEASE_SHA}"
+            echo "- run_id: ${AUDIT_RUN_ID}"
+            echo "- head_sha: ${AUDIT_HEAD_SHA}"
+            echo "- run_number: ${AUDIT_RUN_NUMBER}"
+          } >> "$GITHUB_STEP_SUMMARY"

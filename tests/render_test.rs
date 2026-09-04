@@ -193,3 +193,35 @@ fn hnsw_gate_note_is_sanitized() {
     assert!(body.contains(r"\|") || body.contains("pipe"));
     assert!(body.contains("\n> "));
 }
+
+#[test]
+fn merge_extraction_quality_into_matrix_comment() {
+    use ibex_benchmark_bot::model::ExtractionQualityBenchmarkData;
+    use ibex_benchmark_bot::render::merge_extraction_quality_into_comment;
+
+    let extraction: ExtractionQualityBenchmarkData = serde_json::from_value(serde_json::json!({
+        "schema_version": 1,
+        "benchmark": "extraction_quality",
+        "runs": [{
+            "sha": "abcdef1",
+            "short_sha": "abcdef1",
+            "status": "pass",
+            "conversation_count": 125,
+            "provider": "openai",
+            "metrics": {
+                "precision_macro": 0.95,
+                "recall_macro": 0.9,
+                "category_assignment_accuracy": 1.0,
+                "temporal_field_accuracy": 1.0
+            }
+        }]
+    }))
+    .unwrap();
+    let body = merge_extraction_quality_into_comment("", &extraction).expect("merge");
+    assert!(body.contains(COMMENT_MARKER));
+    assert!(body.contains("**Extraction quality**"));
+    assert!(body.contains("Precision macro"));
+    assert!(body.contains("<!-- IBEX_EXTRACTION_QUALITY_START -->"));
+    assert!(body.contains("<summary>Deep Dive: Extraction quality</summary>"));
+    assert!(body.contains("|extraction_quality|Extraction quality|"));
+}
