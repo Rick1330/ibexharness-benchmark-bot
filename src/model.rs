@@ -187,6 +187,50 @@ pub struct WritePipelineBenchmarkMetrics {
     pub latency_ms_p99: Option<f64>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ExtractionQualityBenchmarkData {
+    pub schema_version: Option<i64>,
+    pub benchmark: Option<String>,
+    pub runs: Option<Vec<ExtractionQualityBenchmarkRun>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ExtractionQualityBenchmarkRun {
+    pub sha: Option<String>,
+    pub short_sha: Option<String>,
+    pub timestamp: Option<String>,
+    pub branch: Option<String>,
+    pub run_number: Option<i64>,
+    pub run_url: Option<String>,
+    pub gold_set: Option<String>,
+    pub conversation_count: Option<i64>,
+    pub provider: Option<String>,
+    pub enforcement: Option<String>,
+    pub mode: Option<String>,
+    pub model: Option<String>,
+    pub metrics: Option<ExtractionQualityBenchmarkMetrics>,
+    pub status: Option<String>,
+    pub gate_summary: Option<Value>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ExtractionQualityBenchmarkMetrics {
+    pub precision_macro: Option<f64>,
+    pub recall_macro: Option<f64>,
+    pub category_assignment_accuracy: Option<f64>,
+    pub temporal_field_accuracy: Option<f64>,
+    pub precision_factual: Option<f64>,
+    pub recall_factual: Option<f64>,
+    pub precision_preference: Option<f64>,
+    pub recall_preference: Option<f64>,
+    pub precision_behavioral: Option<f64>,
+    pub recall_behavioral: Option<f64>,
+    pub precision_episodic: Option<f64>,
+    pub recall_episodic: Option<f64>,
+    pub precision_procedural: Option<f64>,
+    pub recall_procedural: Option<f64>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::HnswSizeResult;

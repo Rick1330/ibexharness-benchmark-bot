@@ -9,9 +9,10 @@
 | **Proxy PR quality comment** | ibex-harness `Benchmarks` on `pull_request` | Every matching PR (**smoke** profile) | App upserts the **Proxy** row/deep-dive of the shared sticky comment (`IBEX_BOT_COMMENT`): global verdict + suite matrix + collapsed Proxy deep dive + environment. **Never** opens a data PR. |
 | **Memory HNSW PR comment** | ibex-harness `Memory Benchmarks` on `pull_request` | Every matching PR (**smoke** = 10K) | App upserts the **Memory HNSW** row/deep-dive of the **same** sticky comment. Missing 1M on smoke/fast is informational, not WARN. **Never** opens a data PR. |
 | **Daily proxy data publish** | ibex-harness `notify-benchmark-bot` → this repo `Publish benchmark data` | Daily 04:00 UTC + main push collects; Sunday uses `full` profile | Bot commits `benchmark-data.json` + `badge.svg` onto shared branch `chore/bench-data-publish` and **opens or updates one** data PR. |
-| **HNSW data publish** | ibex-harness `Memory Benchmarks` → this repo `Publish HNSW benchmark data` | Sunday 05:00 UTC + main push / dispatch | Bot commits **only** `hnsw-benchmark-data.json` onto the **same** shared branch / PR (never rewrites proxy files). |
+| **HNSW data publish** | ibex-harness `Memory Benchmarks` → this repo `Publish HNSW benchmark data` | Sunday 05:00 UTC + main push / dispatch | Bot commits **only** `hnsw-benchmark-data.json` onto the **same** shared branch / PR (never rewrites proxy files). Ranking/write suites may publish in the same workflow. |
+| **Extraction quality data publish** | harness `extraction_benchmark_main_complete` → this repo `Publish extraction benchmark data` | On dispatch after extraction eval on main | Bot commits **only** `extraction-quality-benchmark-data.json` onto `chore/bench-data-publish`. |
 
-Suite comments share one sticky thread. Each suite updates only its section (`IBEX_PROXY_*` / `IBEX_HNSW_*`).
+Suite comments share one sticky thread. Each suite updates only its section (`IBEX_PROXY_*` / `IBEX_HNSW_*` / `IBEX_RANKING_QUALITY_*` / `IBEX_WRITE_PIPELINE_*` / `IBEX_EXTRACTION_QUALITY_*`).
 
 ### Daily publish flow (proxy)
 
@@ -28,6 +29,12 @@ Suite comments share one sticky thread. Each suite updates only its section (`IB
 3. **publish-hnsw-benchmark-data** verifies workflow name/path (`Memory Benchmarks` / `.github/workflows/memory-benchmark.yml`), downloads artifact `hnsw-benchmark-data`, validates, and commits `web/public/benchmarks/hnsw-benchmark-data.json` only onto `chore/bench-data-publish` (shared with proxy).
 4. Result cells may include methodology knobs (`ef_search`, `min_similarity`, `iterative_scan`, `index_build_mode`, plan/buffer stats). Validation requires core latency/recall fields; optional knobs are range-checked when present.
 5. Maintainer merges; pin `BOT_RELEASE_SHA` / harness `BENCHMARK_BOT_SHA` together after bot code merges.
+
+### Extraction quality publish flow
+
+1. Harness extraction benchmark completes on `main` and dispatches `extraction_benchmark_main_complete`.
+2. **publish-extraction-benchmark-data** verifies the Memory Benchmarks workflow run, downloads artifact `extraction-quality-benchmark-data`, validates, and commits `web/public/benchmarks/extraction-quality-benchmark-data.json` onto `chore/bench-data-publish`.
+3. Maintainer merges the shared data PR after harness CI is green.
 
 ## Contribution / merge policy
 

@@ -10,10 +10,13 @@ pub const RANKING_QUALITY_BENCHMARK_DATA_PATH: &str =
     "web/public/benchmarks/ranking-quality-benchmark-data.json";
 pub const WRITE_PIPELINE_BENCHMARK_DATA_PATH: &str =
     "web/public/benchmarks/write-pipeline-benchmark-data.json";
+pub const EXTRACTION_QUALITY_BENCHMARK_DATA_PATH: &str =
+    "web/public/benchmarks/extraction-quality-benchmark-data.json";
 pub const BENCHMARK_DATA_LABEL: &str = "benchmark-data";
 pub const HNSW_BENCHMARK_DATA_LABEL: &str = "hnsw-benchmark-data";
 pub const RANKING_QUALITY_BENCHMARK_DATA_LABEL: &str = "ranking-quality-benchmark-data";
 pub const WRITE_PIPELINE_BENCHMARK_DATA_LABEL: &str = "write-pipeline-benchmark-data";
+pub const EXTRACTION_QUALITY_BENCHMARK_DATA_LABEL: &str = "extraction-quality-benchmark-data";
 /// Shared branch for all suite data publishes — one open PR at a time.
 pub const DATA_PR_BRANCH: &str = "chore/bench-data-publish";
 

@@ -121,6 +121,8 @@ pub async fn publish_write_pipeline_benchmark_data(
         ranking_run_number: None,
         write_run_url: run.html_url.as_deref(),
         write_run_number: Some(payload.run_number),
+        extraction_run_url: None,
+        extraction_run_number: None,
     })
     .await?;
 

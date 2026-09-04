@@ -1,16 +1,18 @@
 mod sanitize;
 
 use crate::model::{
-    BenchmarkData, BenchmarkRun, GateCheck, GateResult, HnswBenchmarkData, HnswSizeResult,
-    RankingQualityBenchmarkData, StageMetrics, WritePipelineBenchmarkData,
+    BenchmarkData, BenchmarkRun, ExtractionQualityBenchmarkData, GateCheck, GateResult,
+    HnswBenchmarkData, HnswSizeResult, RankingQualityBenchmarkData, StageMetrics,
+    WritePipelineBenchmarkData,
 };
 pub use sanitize::{
     escape_cell, format_delta, format_latency_delta, format_latency_ms, format_ns_per_op,
     format_number, format_throughput, format_throughput_delta, sanitize_branch, sanitize_gate_name,
     sanitize_sha, status_emoji, COMMENT_MARKER, COMMENT_MARKER_HNSW, ENV_SECTION_END,
-    ENV_SECTION_START, HNSW_SECTION_END, HNSW_SECTION_START, PROXY_SECTION_END,
-    PROXY_SECTION_START, RANKING_QUALITY_SECTION_END, RANKING_QUALITY_SECTION_START,
-    SUITE_META_PREFIX, WRITE_PIPELINE_SECTION_END, WRITE_PIPELINE_SECTION_START,
+    ENV_SECTION_START, EXTRACTION_QUALITY_SECTION_END, EXTRACTION_QUALITY_SECTION_START,
+    HNSW_SECTION_END, HNSW_SECTION_START, PROXY_SECTION_END, PROXY_SECTION_START,
+    RANKING_QUALITY_SECTION_END, RANKING_QUALITY_SECTION_START, SUITE_META_PREFIX,
+    WRITE_PIPELINE_SECTION_END, WRITE_PIPELINE_SECTION_START,
 };
 
 const DOCS_BASE: &str = "https://docs.ibexharness.com/benchmarks";
@@ -72,6 +74,9 @@ pub fn render_data_pr_body(
         write: None,
         write_run_url: None,
         write_run_number: None,
+        extraction: None,
+        extraction_run_url: None,
+        extraction_run_number: None,
     })
 }
 
@@ -89,6 +94,9 @@ pub struct CombinedDataPrInput<'a> {
     pub write: Option<&'a WritePipelineBenchmarkData>,
     pub write_run_url: Option<&'a str>,
     pub write_run_number: Option<i64>,
+    pub extraction: Option<&'a ExtractionQualityBenchmarkData>,
+    pub extraction_run_url: Option<&'a str>,
+    pub extraction_run_number: Option<i64>,
 }
 
 pub fn render_combined_data_pr_body(input: CombinedDataPrInput<'_>) -> String {
@@ -104,6 +112,9 @@ pub fn render_combined_data_pr_body(input: CombinedDataPrInput<'_>) -> String {
     }
     if input.write.is_some() {
         suites.push("Write pipeline");
+    }
+    if input.extraction.is_some() {
+        suites.push("Extraction quality");
     }
     let suites_list = if suites.is_empty() {
         "_none_".to_string()
@@ -165,6 +176,14 @@ pub fn render_combined_data_pr_body(input: CombinedDataPrInput<'_>) -> String {
         ));
         lines.push(String::new());
     }
+    if let Some(data) = input.extraction {
+        lines.push(render_extraction_quality_data_section(
+            data,
+            input.extraction_run_url,
+            input.extraction_run_number,
+        ));
+        lines.push(String::new());
+    }
 
     lines.push("## Testing".to_string());
     lines.push(String::new());
@@ -200,7 +219,7 @@ pub fn render_combined_data_pr_body(input: CombinedDataPrInput<'_>) -> String {
     lines.push("## Checklist (Definition of Done)".to_string());
     lines.push(String::new());
     lines.push("- [ ] Correct files only (proxy JSON+badge and/or suite JSON files)".to_string());
-    lines.push("- [ ] Labels match files (`benchmark-data`, `hnsw-benchmark-data`, `ranking-quality-benchmark-data`, `write-pipeline-benchmark-data`)".to_string());
+    lines.push("- [ ] Labels match files (`benchmark-data`, `hnsw-benchmark-data`, `ranking-quality-benchmark-data`, `write-pipeline-benchmark-data`, `extraction-quality-benchmark-data`)".to_string());
     lines.push("- [ ] Single shared data PR branch `chore/bench-data-publish`".to_string());
     lines.join("\n")
 }
@@ -325,6 +344,29 @@ pub fn merge_write_pipeline_into_comment(
     Ok(rebuild_comment_shell(&body))
 }
 
+/// Compact extraction-quality section merged into the shared sticky comment.
+pub fn render_extraction_quality_pr_comment(
+    data: &ExtractionQualityBenchmarkData,
+) -> Result<String, String> {
+    merge_extraction_quality_into_comment("", data)
+}
+
+/// Merge extraction-quality into the shared sticky comment (preserves other suites).
+pub fn merge_extraction_quality_into_comment(
+    existing: &str,
+    data: &ExtractionQualityBenchmarkData,
+) -> Result<String, String> {
+    let section = render_extraction_quality_section(data)?;
+    let mut body = ensure_comment_shell(existing);
+    body = upsert_section(
+        &body,
+        EXTRACTION_QUALITY_SECTION_START,
+        EXTRACTION_QUALITY_SECTION_END,
+        &section,
+    );
+    Ok(rebuild_comment_shell(&body))
+}
+
 fn ensure_comment_shell(existing: &str) -> String {
     let normalized = existing.replace(COMMENT_MARKER_HNSW, COMMENT_MARKER);
     if normalized.contains(COMMENT_MARKER) {
@@ -359,6 +401,10 @@ fn rebuild_comment_shell(body: &str) -> String {
         (HNSW_SECTION_START, HNSW_SECTION_END),
         (RANKING_QUALITY_SECTION_START, RANKING_QUALITY_SECTION_END),
         (WRITE_PIPELINE_SECTION_START, WRITE_PIPELINE_SECTION_END),
+        (
+            EXTRACTION_QUALITY_SECTION_START,
+            EXTRACTION_QUALITY_SECTION_END,
+        ),
         (ENV_SECTION_START, ENV_SECTION_END),
     ] {
         if let Some(block) = extract_section_block(body, start, end) {
@@ -469,6 +515,7 @@ fn suite_sort_key(id: &str) -> u8 {
         "hnsw" => 1,
         "ranking_quality" => 2,
         "write_pipeline" => 3,
+        "extraction_quality" => 4,
         _ => 9,
     }
 }
@@ -812,6 +859,70 @@ fn render_write_pipeline_section(data: &WritePipelineBenchmarkData) -> Result<St
     Ok(body.join("\n"))
 }
 
+fn render_extraction_quality_section(
+    data: &ExtractionQualityBenchmarkData,
+) -> Result<String, String> {
+    let run = data
+        .runs
+        .as_ref()
+        .and_then(|runs| runs.first())
+        .ok_or_else(|| "extraction-quality benchmark data has no runs".to_string())?;
+    let status = normalize_status(run.status.as_deref().unwrap_or("unknown"));
+    let metrics = run.metrics.as_ref();
+    let precision = metrics
+        .and_then(|m| m.precision_macro)
+        .map(|v| format!("{v:.3}"))
+        .unwrap_or_else(|| "n/a".into());
+    let recall = metrics
+        .and_then(|m| m.recall_macro)
+        .map(|v| format!("{v:.3}"))
+        .unwrap_or_else(|| "n/a".into());
+    let category = metrics
+        .and_then(|m| m.category_assignment_accuracy)
+        .map(|v| format!("{v:.3}"))
+        .unwrap_or_else(|| "n/a".into());
+    let temporal = metrics
+        .and_then(|m| m.temporal_field_accuracy)
+        .map(|v| format!("{v:.3}"))
+        .unwrap_or_else(|| "n/a".into());
+    let meta = SuiteMeta {
+        id: "extraction_quality".into(),
+        name: "Extraction quality".into(),
+        primary: format!("`{precision}` (Precision macro)"),
+        delta: "—".into(),
+        status: status.to_string(),
+    };
+
+    let mut body = vec![
+        encode_suite_meta(&meta),
+        format!(
+            "<details{}>\n<summary>Deep Dive: Extraction quality</summary>\n<br>\n",
+            details_open_attr(status)
+        ),
+        format!("* **Precision macro:** `{precision}`"),
+        format!("* **Recall macro:** `{recall}`"),
+        format!("* **Category accuracy:** `{category}`"),
+        format!("* **Temporal accuracy:** `{temporal}`"),
+    ];
+    if let Some(count) = run.conversation_count {
+        body.push(format!("* **Conversations:** {count}"));
+    }
+    if let Some(provider) = run.provider.as_deref().filter(|s| !s.is_empty()) {
+        body.push(format!("* **Provider:** `{provider}`"));
+    }
+    if let Some(note) = run
+        .gate_summary
+        .as_ref()
+        .and_then(|g| g.get("note"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
+        body.push(format!("\n> {}", escape_cell(Some(note))));
+    }
+    body.push("</details>".to_string());
+    Ok(body.join("\n"))
+}
+
 fn render_env_section(data: &BenchmarkData) -> Option<String> {
     let run = data.runs.as_ref().and_then(|runs| runs.first())?;
     let baseline_sha = data.baseline_sha.as_deref();
@@ -847,6 +958,9 @@ pub fn render_hnsw_data_pr_body(
         write: None,
         write_run_url: None,
         write_run_number: None,
+        extraction: None,
+        extraction_run_url: None,
+        extraction_run_number: None,
     })
 }
 
@@ -868,6 +982,9 @@ pub fn render_ranking_quality_data_pr_body(
         write: None,
         write_run_url: None,
         write_run_number: None,
+        extraction: None,
+        extraction_run_url: None,
+        extraction_run_number: None,
     })
 }
 
@@ -889,6 +1006,33 @@ pub fn render_write_pipeline_data_pr_body(
         write: Some(data),
         write_run_url: run_url,
         write_run_number: Some(run_number),
+        extraction: None,
+        extraction_run_url: None,
+        extraction_run_number: None,
+    })
+}
+
+pub fn render_extraction_quality_data_pr_body(
+    data: &ExtractionQualityBenchmarkData,
+    run_url: Option<&str>,
+    run_number: i64,
+) -> String {
+    render_combined_data_pr_body(CombinedDataPrInput {
+        proxy: None,
+        proxy_run_url: None,
+        proxy_run_number: None,
+        hnsw: None,
+        hnsw_run_url: None,
+        hnsw_run_number: None,
+        ranking: None,
+        ranking_run_url: None,
+        ranking_run_number: None,
+        write: None,
+        write_run_url: None,
+        write_run_number: None,
+        extraction: Some(data),
+        extraction_run_url: run_url,
+        extraction_run_number: Some(run_number),
     })
 }
 
@@ -1070,6 +1214,58 @@ fn render_write_pipeline_data_section(
         ),
         String::new(),
         format!("_SLA: p95 <= {WRITE_P95_SLA_MS} ms._"),
+    ];
+    if let Some(url) = run_url.or(latest.and_then(|run| run.run_url.as_deref())) {
+        lines.push(String::new());
+        lines.push(format!("- [Harness Memory Benchmarks workflow run]({url})"));
+    }
+    lines.join("\n")
+}
+
+fn render_extraction_quality_data_section(
+    data: &ExtractionQualityBenchmarkData,
+    run_url: Option<&str>,
+    run_number: Option<i64>,
+) -> String {
+    let latest = data.runs.as_ref().and_then(|runs| runs.first());
+    let short_sha = latest
+        .and_then(|run| run.short_sha.as_deref().or(run.sha.as_deref()))
+        .map(|sha| sanitize_sha(Some(sha)))
+        .unwrap_or_else(|| sanitize_sha(None));
+    let precision = latest
+        .and_then(|run| run.metrics.as_ref())
+        .and_then(|m| m.precision_macro)
+        .map(|v| format!("`{v:.4}`"))
+        .unwrap_or_else(|| "`n/a`".into());
+    let recall = latest
+        .and_then(|run| run.metrics.as_ref())
+        .and_then(|m| m.recall_macro)
+        .map(|v| format!("`{v:.4}`"))
+        .unwrap_or_else(|| "`n/a`".into());
+    let number = run_number
+        .or(latest.and_then(|r| r.run_number))
+        .map(|v| v.to_string())
+        .unwrap_or_else(|| "?".to_string());
+
+    let mut lines = vec![
+        "### Extraction-quality suite".to_string(),
+        String::new(),
+        markdown_table(
+            &["Field", "Value"],
+            &[
+                vec!["Run number".to_string(), number],
+                vec!["Head SHA".to_string(), short_sha],
+                vec!["Precision macro".to_string(), precision],
+                vec!["Recall macro".to_string(), recall],
+                vec![
+                    "Path".to_string(),
+                    format!(
+                        "`{}`",
+                        crate::config::EXTRACTION_QUALITY_BENCHMARK_DATA_PATH
+                    ),
+                ],
+            ],
+        ),
     ];
     if let Some(url) = run_url.or(latest.and_then(|run| run.run_url.as_deref())) {
         lines.push(String::new());
