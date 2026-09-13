@@ -5,8 +5,8 @@ use std::fs;
 use crate::config::{DATA_PR_BRANCH, WRITE_PIPELINE_BENCHMARK_DATA_PATH};
 use crate::error::{bot_err, Result};
 use crate::github::{
-    bot_commit_message, split_repo, CommitFile, CommitFilesRequest, CreateBranch, GitHubClient,
-    RepoPathRef, RepoRef,
+    bot_commit_message, split_repo, CommitFile, CommitFilesRequest, GitHubClient, RepoPathRef,
+    RepoRef,
 };
 use crate::model::{DispatchPayload, WritePipelineBenchmarkData};
 use crate::publish_shared::{
@@ -81,15 +81,9 @@ pub async fn publish_write_pipeline_benchmark_data(
     }
 
     let main_sha = client.main_sha(repo_ref).await?;
-    if !client.ref_exists(repo_ref, DATA_PR_BRANCH).await? {
-        client
-            .create_branch(CreateBranch {
-                repo: repo_ref,
-                branch: DATA_PR_BRANCH,
-                sha: &main_sha,
-            })
-            .await?;
-    }
+    client
+        .ensure_branch(repo_ref, DATA_PR_BRANCH, &main_sha)
+        .await?;
 
     let subject = format!(
         "chore(bench): write-pipeline benchmark data update (run #{})",

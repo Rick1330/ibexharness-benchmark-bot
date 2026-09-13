@@ -10,8 +10,8 @@ use crate::extraction_quality_validate::{
     extraction_quality_published_sha_exists, validate_extraction_quality_file,
 };
 use crate::github::{
-    bot_commit_message, split_repo, CommitFile, CommitFilesRequest, CreateBranch, GitHubClient,
-    RepoPathRef, RepoRef,
+    bot_commit_message, split_repo, CommitFile, CommitFilesRequest, GitHubClient, RepoPathRef,
+    RepoRef,
 };
 use crate::model::{DispatchPayload, ExtractionQualityBenchmarkData};
 use crate::publish_shared::{
@@ -31,7 +31,7 @@ pub async fn publish_extraction_quality_benchmark_data(
     payload: &DispatchPayload,
     dry_run: bool,
 ) -> Result<PublishResult> {
-    let run = verify::verify_hnsw_dispatch(client, repo_full, payload).await?;
+    let run = verify::verify_extraction_dispatch(client, repo_full, payload).await?;
     let (owner, repo) = split_repo(repo_full)?;
     let repo_ref = RepoRef::new(owner, repo);
     let branch = DATA_PR_BRANCH.to_string();
@@ -81,15 +81,9 @@ pub async fn publish_extraction_quality_benchmark_data(
     }
 
     let main_sha = client.main_sha(repo_ref).await?;
-    if !client.ref_exists(repo_ref, DATA_PR_BRANCH).await? {
-        client
-            .create_branch(CreateBranch {
-                repo: repo_ref,
-                branch: DATA_PR_BRANCH,
-                sha: &main_sha,
-            })
-            .await?;
-    }
+    client
+        .ensure_branch(repo_ref, DATA_PR_BRANCH, &main_sha)
+        .await?;
 
     let subject = format!(
         "chore(bench): extraction-quality benchmark data update (run #{})",

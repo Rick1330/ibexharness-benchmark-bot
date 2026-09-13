@@ -5,6 +5,7 @@ use regex::Regex;
 use serde_json::Value;
 
 use crate::config::{
+    EXPECTED_EXTRACTION_WORKFLOW_NAME, EXPECTED_EXTRACTION_WORKFLOW_PATH,
     EXPECTED_HNSW_WORKFLOW_NAME, EXPECTED_HNSW_WORKFLOW_PATH, EXPECTED_WORKFLOW_NAME,
     EXPECTED_WORKFLOW_PATH,
 };
@@ -75,6 +76,14 @@ pub fn verify_hnsw_workflow_run(run: &WorkflowRun) -> Result<()> {
     )
 }
 
+pub fn verify_extraction_workflow_run(run: &WorkflowRun) -> Result<()> {
+    verify_workflow_run_named(
+        run,
+        EXPECTED_EXTRACTION_WORKFLOW_NAME,
+        EXPECTED_EXTRACTION_WORKFLOW_PATH,
+    )
+}
+
 fn verify_workflow_run_named(run: &WorkflowRun, name: &str, path: &str) -> Result<()> {
     if run.conclusion.as_deref() != Some(EXPECTED_CONCLUSION) {
         return Err(bot_err(format!(
@@ -121,6 +130,21 @@ pub async fn verify_hnsw_dispatch(
         payload,
         EXPECTED_HNSW_WORKFLOW_NAME,
         EXPECTED_HNSW_WORKFLOW_PATH,
+    )
+    .await
+}
+
+pub async fn verify_extraction_dispatch(
+    client: &GitHubClient,
+    repo_full: &str,
+    payload: &DispatchPayload,
+) -> Result<WorkflowRun> {
+    verify_dispatch_named(
+        client,
+        repo_full,
+        payload,
+        EXPECTED_EXTRACTION_WORKFLOW_NAME,
+        EXPECTED_EXTRACTION_WORKFLOW_PATH,
     )
     .await
 }
@@ -194,5 +218,22 @@ mod tests {
     #[test]
     fn require_sha_rejects_invalid() {
         assert!(require_sha("not-hex").is_err());
+    }
+
+    #[test]
+    fn accepts_extraction_workflow_identity() {
+        let mut run = valid_run();
+        run.name = Some(EXPECTED_EXTRACTION_WORKFLOW_NAME.to_string());
+        run.path = Some(EXPECTED_EXTRACTION_WORKFLOW_PATH.to_string());
+        assert!(verify_extraction_workflow_run(&run).is_ok());
+    }
+
+    #[test]
+    fn rejects_hnsw_identity_for_extraction_verify() {
+        let mut run = valid_run();
+        run.name = Some(EXPECTED_HNSW_WORKFLOW_NAME.to_string());
+        run.path = Some(EXPECTED_HNSW_WORKFLOW_PATH.to_string());
+        let err = verify_extraction_workflow_run(&run).expect_err("must reject HNSW");
+        assert!(err.to_string().contains(EXPECTED_EXTRACTION_WORKFLOW_NAME));
     }
 }
