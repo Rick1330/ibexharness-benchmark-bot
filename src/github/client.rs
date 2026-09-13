@@ -266,18 +266,13 @@ impl GitHubClient {
             return Ok(());
         }
         let body = response.text().await.unwrap_or_default();
-        // Concurrent publishers race on the shared data branch; treat "already exists" as success
-        // only when the ref is actually readable (avoids false positives leaving commit_files on 404).
+        // Concurrent publishers race on the shared data branch. Treat "already exists" as
+        // success and let ensure_branch's bounded poll confirm readability (a losing create
+        // can see 422 before GET observes the winner's ref).
         if status == StatusCode::UNPROCESSABLE_ENTITY
             && body.to_ascii_lowercase().contains("already exists")
         {
-            if self.try_branch_sha(req.repo, req.branch).await?.is_some() {
-                return Ok(());
-            }
-            return Err(bot_err(format!(
-                "POST {path} reported already exists but heads/{} is missing: {body}",
-                req.branch
-            )));
+            return Ok(());
         }
         Err(bot_err(format!(
             "POST {path} failed: status {status}: {body}"
