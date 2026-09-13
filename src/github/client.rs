@@ -110,6 +110,27 @@ fn bot_author_email() -> String {
     format!("{app_id}+ibex-harness-benchmark[bot]@users.noreply.github.com")
 }
 
+/// Encode branch names for GitHub "get/update a reference" paths (`chore/x` → `chore%2Fx`).
+fn encode_branch_ref(branch: &str) -> String {
+    branch.replace('/', "%2F")
+}
+
+fn git_ref_heads_path(repo: RepoRef<'_>, branch: &str) -> String {
+    format!(
+        "{}/git/ref/heads/{}",
+        repo.base_path(),
+        encode_branch_ref(branch)
+    )
+}
+
+fn git_refs_heads_path(repo: RepoRef<'_>, branch: &str) -> String {
+    format!(
+        "{}/git/refs/heads/{}",
+        repo.base_path(),
+        encode_branch_ref(branch)
+    )
+}
+
 impl<'a> RepoRef<'a> {
     pub fn new(owner: &'a str, repo: &'a str) -> Self {
         Self { owner, repo }
@@ -134,19 +155,31 @@ impl GitHubClient {
     }
 
     pub async fn ref_exists(&self, repo: RepoRef<'_>, branch: &str) -> Result<bool> {
-        let path = format!("{}/git/ref/heads/{branch}", repo.base_path());
-        let response = self
-            .http
-            .get_raw(&path, "application/vnd.github+json")
-            .await?;
-        match response.status() {
-            StatusCode::NOT_FOUND => Ok(false),
-            status if status.is_success() => Ok(true),
-            _ => Err(bot_err(format!(
-                "ref check failed: {}",
-                response.text().await.unwrap_or_default()
-            ))),
+        Ok(self.try_branch_sha(repo, branch).await?.is_some())
+    }
+
+    /// Ensure `branch` exists, creating it from `sha` when missing.
+    ///
+    /// Shared data publishes race when `chore/bench-data-publish` was deleted after a merge;
+    /// after create we re-read the ref (with short retries) before commit_files.
+    pub async fn ensure_branch(&self, repo: RepoRef<'_>, branch: &str, sha: &str) -> Result<()> {
+        if self.try_branch_sha(repo, branch).await?.is_some() {
+            return Ok(());
         }
+        self.create_branch(CreateBranch { repo, branch, sha })
+            .await?;
+        for attempt in 0..5 {
+            if self.try_branch_sha(repo, branch).await?.is_some() {
+                return Ok(());
+            }
+            if attempt + 1 < 5 {
+                tokio::time::sleep(std::time::Duration::from_millis(200 * (attempt + 1) as u64))
+                    .await;
+            }
+        }
+        Err(bot_err(format!(
+            "branch {branch} still missing after create from {sha}"
+        )))
     }
 
     pub async fn download_artifact_zip(&self, repo: RepoRef<'_>, run_id: i64) -> Result<Vec<u8>> {
@@ -233,7 +266,9 @@ impl GitHubClient {
             return Ok(());
         }
         let body = response.text().await.unwrap_or_default();
-        // Concurrent publishers race on the shared data branch; treat "already exists" as success.
+        // Concurrent publishers race on the shared data branch. Treat "already exists" as
+        // success and let ensure_branch's bounded poll confirm readability (a losing create
+        // can see 422 before GET observes the winner's ref).
         if status == StatusCode::UNPROCESSABLE_ENTITY
             && body.to_ascii_lowercase().contains("already exists")
         {
@@ -406,22 +441,41 @@ impl GitHubClient {
 
         self.http
             .patch_json(
-                &format!("{}/git/refs/heads/{}", repo.base_path(), req.branch),
+                &git_refs_heads_path(repo, req.branch),
                 serde_json::json!({ "sha": commit_sha, "force": false }),
             )
             .await?;
         Ok(commit_sha)
     }
 
-    async fn branch_sha(&self, repo: RepoRef<'_>, branch: &str) -> Result<String> {
-        let value: Value = self
+    async fn try_branch_sha(&self, repo: RepoRef<'_>, branch: &str) -> Result<Option<String>> {
+        let path = git_ref_heads_path(repo, branch);
+        let response = self
             .http
-            .get_json(&format!("{}/git/ref/heads/{branch}", repo.base_path()))
+            .get_raw(&path, "application/vnd.github+json")
             .await?;
-        value
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            return Err(bot_err(format!(
+                "GET {path} failed: {}",
+                response.text().await.unwrap_or_default()
+            )));
+        }
+        let value: Value = response
+            .json()
+            .await
+            .map_err(|err| bot_err(format!("GET {path} decode failed: {err}")))?;
+        Ok(value
             .pointer("/object/sha")
             .and_then(|sha| sha.as_str())
-            .map(str::to_owned)
+            .map(str::to_owned))
+    }
+
+    async fn branch_sha(&self, repo: RepoRef<'_>, branch: &str) -> Result<String> {
+        self.try_branch_sha(repo, branch)
+            .await?
             .ok_or_else(|| bot_err(format!("branch sha missing for {branch}")))
     }
 
@@ -626,7 +680,7 @@ pub fn split_repo(full_name: &str) -> Result<(&str, &str)> {
 
 #[cfg(test)]
 mod message_tests {
-    use super::bot_commit_message;
+    use super::{bot_commit_message, encode_branch_ref};
 
     #[test]
     fn commit_message_includes_signed_off_by() {
@@ -635,5 +689,14 @@ mod message_tests {
         assert!(message.contains("Signed-off-by: ibex-harness-benchmark[bot]"));
         assert!(message.contains("424242+ibex-harness-benchmark[bot]@users.noreply.github.com"));
         std::env::remove_var("APP_ID");
+    }
+
+    #[test]
+    fn encodes_nested_branch_slashes_for_ref_api() {
+        assert_eq!(
+            encode_branch_ref("chore/bench-data-publish"),
+            "chore%2Fbench-data-publish"
+        );
+        assert_eq!(encode_branch_ref("main"), "main");
     }
 }

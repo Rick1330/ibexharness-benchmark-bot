@@ -16,6 +16,7 @@ GitHub App (Rust) · publishes benchmark data to <a href="https://github.com/Ric
 | `verify-dispatch` | Re-verify proxy Benchmarks dispatch via Actions API |
 | `publish` | Validate proxy artifact; commit onto shared `chore/bench-data-publish`; open/update one data PR |
 | `verify-hnsw-dispatch` | Re-verify Memory Benchmarks dispatch |
+| `verify-extraction-dispatch` | Re-verify Extraction Quality Eval dispatch |
 | `publish-hnsw` | Validate HNSW artifact; commit onto the **same** shared data PR (HNSW JSON only) |
 | `publish-ranking` | Validate ranking-quality artifact; commit onto the shared data PR |
 | `publish-write` | Validate write-pipeline artifact; commit onto the shared data PR |

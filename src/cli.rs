@@ -73,6 +73,13 @@ pub enum Commands {
         #[arg(long, env = "HARNESS_REPO", default_value = "Rick1330/ibex-harness")]
         repo: String,
     },
+    /// Verify an extraction-quality repository_dispatch payload
+    VerifyExtractionDispatch {
+        #[arg(long)]
+        payload: String,
+        #[arg(long, env = "HARNESS_REPO", default_value = "Rick1330/ibex-harness")]
+        repo: String,
+    },
     /// Render a PR benchmark comment to stdout
     RenderPrComment {
         #[arg(long, env = "BENCHMARK_DATA_PATH")]
@@ -241,6 +248,13 @@ pub async fn run(cli: Cli) -> Result<()> {
             let parsed = verify::parse_payload_json(&payload)?;
             let client = app_client().await?;
             verify::verify_hnsw_dispatch(&client, repo, &parsed).await?;
+            println!("{{\"ok\":true}}");
+        }
+        Commands::VerifyExtractionDispatch { payload, repo } => {
+            let repo = locked_repo(&repo)?;
+            let parsed = verify::parse_payload_json(&payload)?;
+            let client = app_client().await?;
+            verify::verify_extraction_dispatch(&client, repo, &parsed).await?;
             println!("{{\"ok\":true}}");
         }
         Commands::RenderPrComment {

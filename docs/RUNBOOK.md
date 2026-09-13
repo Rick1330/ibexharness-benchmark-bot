@@ -33,7 +33,7 @@ Suite comments share one sticky thread. Each suite updates only its section (`IB
 ### Extraction quality publish flow
 
 1. Harness extraction benchmark completes on `main` and dispatches `extraction_benchmark_main_complete`.
-2. **publish-extraction-benchmark-data** verifies the Memory Benchmarks workflow run, downloads artifact `extraction-quality-benchmark-data`, validates, and commits `web/public/benchmarks/extraction-quality-benchmark-data.json` onto `chore/bench-data-publish`.
+2. **publish-extraction-benchmark-data** verifies the Extraction Quality Eval workflow run (`.github/workflows/extraction-eval.yml`), downloads artifact `extraction-quality-benchmark-data`, validates, and commits `web/public/benchmarks/extraction-quality-benchmark-data.json` onto `chore/bench-data-publish`.
 3. Maintainer merges the shared data PR after harness CI is green.
 
 ## Contribution / merge policy
@@ -112,6 +112,17 @@ For HNSW: use **Publish HNSW benchmark data** with the same input shape against 
 - Corpus sizes and recall/latency fields parse cleanly
 
 **Fix:** Fix harness benchmark pipeline; do not bypass validation.
+
+## Failure: shared data branch missing (404 on `chore/bench-data-publish`)
+
+**Symptoms:** Publish fails at commit with `GET .../git/ref/heads/chore/bench-data-publish` → 404, usually after a previous data PR was merged (branch deleted).
+
+**Checks:**
+- Bot pin includes `ensure_branch` (create from `main` + re-read before `commit_files`)
+- App installation has **Contents: Write** on ibex-harness
+- No ruleset blocking creation of `chore/bench-data-publish`
+
+**Fix:** Re-run the publish workflow (or wait for the next harness dispatch) on a bot release that includes the ensure/retry path. Do not recreate the branch by hand unless debugging.
 
 ## Private key rotation
 

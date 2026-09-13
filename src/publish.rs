@@ -4,8 +4,8 @@ use crate::artifact::{extract_artifact_zip, validate_badge_svg};
 use crate::config::{BADGE_PATH, BENCHMARK_DATA_PATH, DATA_PR_BRANCH};
 use crate::error::{bot_err, Result};
 use crate::github::{
-    bot_commit_message, split_repo, CommitFile, CommitFilesRequest, CreateBranch, GitHubClient,
-    RepoPathRef, RepoRef,
+    bot_commit_message, split_repo, CommitFile, CommitFilesRequest, GitHubClient, RepoPathRef,
+    RepoRef,
 };
 use crate::model::{BenchmarkData, DispatchPayload};
 use crate::publish_shared::{proxy_head_already_on_branch, upsert_combined_data_pr, UpsertDataPr};
@@ -76,15 +76,9 @@ pub async fn publish_benchmark_data(
     }
 
     let main_sha = client.main_sha(repo_ref).await?;
-    if !client.ref_exists(repo_ref, DATA_PR_BRANCH).await? {
-        client
-            .create_branch(CreateBranch {
-                repo: repo_ref,
-                branch: DATA_PR_BRANCH,
-                sha: &main_sha,
-            })
-            .await?;
-    }
+    client
+        .ensure_branch(repo_ref, DATA_PR_BRANCH, &main_sha)
+        .await?;
 
     let subject = format!(
         "chore(bench): proxy benchmark data update (run #{})",

@@ -5,8 +5,8 @@ use std::fs;
 use crate::config::{DATA_PR_BRANCH, HNSW_BENCHMARK_DATA_PATH};
 use crate::error::{bot_err, Result};
 use crate::github::{
-    bot_commit_message, split_repo, CommitFile, CommitFilesRequest, CreateBranch, GitHubClient,
-    RepoPathRef, RepoRef,
+    bot_commit_message, split_repo, CommitFile, CommitFilesRequest, GitHubClient, RepoPathRef,
+    RepoRef,
 };
 use crate::hnsw_artifact::extract_hnsw_artifact_zip;
 use crate::hnsw_validate::{
@@ -74,15 +74,9 @@ pub async fn publish_hnsw_benchmark_data(
     }
 
     let main_sha = client.main_sha(repo_ref).await?;
-    if !client.ref_exists(repo_ref, DATA_PR_BRANCH).await? {
-        client
-            .create_branch(CreateBranch {
-                repo: repo_ref,
-                branch: DATA_PR_BRANCH,
-                sha: &main_sha,
-            })
-            .await?;
-    }
+    client
+        .ensure_branch(repo_ref, DATA_PR_BRANCH, &main_sha)
+        .await?;
 
     let subject = format!(
         "chore(bench): hnsw benchmark data update (run #{})",
