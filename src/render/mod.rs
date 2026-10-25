@@ -212,7 +212,7 @@ pub fn render_combined_data_pr_body(input: CombinedDataPrInput<'_>) -> String {
     lines.push("## Docs".to_string());
     lines.push(String::new());
     lines.push(
-        "Public benchmark history only (`web/public/benchmarks/*`). Suite JSON files stay separate."
+        "Public benchmark history only (`site/public/benchmarks/*`). Suite JSON files stay separate."
             .to_string(),
     );
     lines.push(String::new());

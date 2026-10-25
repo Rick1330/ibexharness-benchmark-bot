@@ -26,14 +26,14 @@ Suite comments share one sticky thread. Each suite updates only its section (`IB
 
 1. ibex-harness **Memory Benchmarks** (`.github/workflows/memory-benchmark.yml`) completes on `main`.
 2. `notify-hnsw-benchmark-bot` sends `repository_dispatch` (`memory_benchmark_main_complete`).
-3. **publish-hnsw-benchmark-data** verifies workflow name/path (`Memory Benchmarks` / `.github/workflows/memory-benchmark.yml`), downloads artifact `hnsw-benchmark-data`, validates, and commits `web/public/benchmarks/hnsw-benchmark-data.json` only onto `chore/bench-data-publish` (shared with proxy).
+3. **publish-hnsw-benchmark-data** verifies workflow name/path (`Memory Benchmarks` / `.github/workflows/memory-benchmark.yml`), downloads artifact `hnsw-benchmark-data`, validates, and commits `site/public/benchmarks/hnsw-benchmark-data.json` only onto `chore/bench-data-publish` (shared with proxy).
 4. Result cells may include methodology knobs (`ef_search`, `min_similarity`, `iterative_scan`, `index_build_mode`, plan/buffer stats). Validation requires core latency/recall fields; optional knobs are range-checked when present.
 5. Maintainer merges; pin `BOT_RELEASE_SHA` / harness `BENCHMARK_BOT_SHA` together after bot code merges.
 
 ### Extraction quality publish flow
 
 1. Harness extraction benchmark completes on `main` and dispatches `extraction_benchmark_main_complete`.
-2. **publish-extraction-benchmark-data** verifies the Extraction Quality Eval workflow run (`.github/workflows/extraction-eval.yml`), downloads artifact `extraction-quality-benchmark-data`, validates, and commits `web/public/benchmarks/extraction-quality-benchmark-data.json` onto `chore/bench-data-publish`.
+2. **publish-extraction-benchmark-data** verifies the Extraction Quality Eval workflow run (`.github/workflows/extraction-eval.yml`), downloads artifact `extraction-quality-benchmark-data`, validates, and commits `site/public/benchmarks/extraction-quality-benchmark-data.json` onto `chore/bench-data-publish`.
 3. Maintainer merges the shared data PR after harness CI is green.
 
 ## Contribution / merge policy
