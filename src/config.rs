@@ -5,15 +5,15 @@ pub const EXPECTED_HNSW_WORKFLOW_NAME: &str = "Memory Benchmarks";
 pub const EXPECTED_HNSW_WORKFLOW_PATH: &str = ".github/workflows/memory-benchmark.yml";
 pub const EXPECTED_EXTRACTION_WORKFLOW_NAME: &str = "Extraction Quality Eval";
 pub const EXPECTED_EXTRACTION_WORKFLOW_PATH: &str = ".github/workflows/extraction-eval.yml";
-pub const BENCHMARK_DATA_PATH: &str = "web/public/benchmarks/benchmark-data.json";
-pub const BADGE_PATH: &str = "web/public/benchmarks/badge.svg";
-pub const HNSW_BENCHMARK_DATA_PATH: &str = "web/public/benchmarks/hnsw-benchmark-data.json";
+pub const BENCHMARK_DATA_PATH: &str = "site/public/benchmarks/benchmark-data.json";
+pub const BADGE_PATH: &str = "site/public/benchmarks/badge.svg";
+pub const HNSW_BENCHMARK_DATA_PATH: &str = "site/public/benchmarks/hnsw-benchmark-data.json";
 pub const RANKING_QUALITY_BENCHMARK_DATA_PATH: &str =
-    "web/public/benchmarks/ranking-quality-benchmark-data.json";
+    "site/public/benchmarks/ranking-quality-benchmark-data.json";
 pub const WRITE_PIPELINE_BENCHMARK_DATA_PATH: &str =
-    "web/public/benchmarks/write-pipeline-benchmark-data.json";
+    "site/public/benchmarks/write-pipeline-benchmark-data.json";
 pub const EXTRACTION_QUALITY_BENCHMARK_DATA_PATH: &str =
-    "web/public/benchmarks/extraction-quality-benchmark-data.json";
+    "site/public/benchmarks/extraction-quality-benchmark-data.json";
 pub const BENCHMARK_DATA_LABEL: &str = "benchmark-data";
 pub const HNSW_BENCHMARK_DATA_LABEL: &str = "hnsw-benchmark-data";
 pub const RANKING_QUALITY_BENCHMARK_DATA_LABEL: &str = "ranking-quality-benchmark-data";
