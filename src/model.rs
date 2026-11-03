@@ -157,6 +157,20 @@ pub struct RankingQualityBenchmarkMetrics {
     pub mrr: Option<f64>,
     pub expected_order_match: Option<f64>,
     pub top_category_accuracy: Option<f64>,
+    /// Gold set v2 (schema 2): graded relevance at ten, the metric that replaced the
+    /// set-overlap trio as the primary signal for the multi-mode runner.
+    pub ndcg_at_10: Option<f64>,
+    /// Gold set v2: per-mode results on the same corpus, so a published run can show what
+    /// dense-only, hybrid, hybrid+rerank, and full-graph each scored.
+    pub modes: Option<Vec<RankingQualityModeResult>>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct RankingQualityModeResult {
+    pub mode: Option<String>,
+    pub ndcg_at_10: Option<f64>,
+    pub lexical_ndcg_at_10: Option<f64>,
+    pub graph_ndcg_at_10: Option<f64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

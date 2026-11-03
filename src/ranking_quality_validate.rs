@@ -22,11 +22,20 @@ pub fn validate_ranking_quality_file(path: &Path) -> Result<()> {
     validate_ranking_quality_payload(&payload)
 }
 
+/// Highest published ranking-quality schema this bot understands.
+///
+/// Schema 1 is the v1 gold set (set-overlap metrics). Schema 2 is the graded gold set: it
+/// carries `metrics.ndcg_at_10` and, when the multi-mode runner produced it,
+/// `metrics.modes`. Both are published by the same workflow, so refusing 2 would break the
+/// data PR the moment gold set v2 lands.
+const MAX_SCHEMA_VERSION: i64 = 2;
+
 pub fn validate_ranking_quality_payload(payload: &RankingQualityBenchmarkData) -> Result<()> {
-    if payload.schema_version != Some(1) {
-        return Err(bot_err(
-            "ranking-quality schema_version must be 1".to_string(),
-        ));
+    let schema = payload.schema_version.unwrap_or(0);
+    if !(1..=MAX_SCHEMA_VERSION).contains(&schema) {
+        return Err(bot_err(format!(
+            "ranking-quality schema_version must be 1 or 2, got {schema}"
+        )));
     }
     if payload.benchmark.as_deref() != Some("ranking_quality") {
         return Err(bot_err(
@@ -49,7 +58,7 @@ pub fn validate_ranking_quality_payload(payload: &RankingQualityBenchmarkData) -
     }
     let mut seen_sha = HashSet::new();
     for (index, run) in runs.iter().enumerate() {
-        validate_ranking_quality_run(run, index)?;
+        validate_ranking_quality_run(run, index, schema)?;
         if let Some(sha) = run.sha.as_deref() {
             if !seen_sha.insert(sha.to_string()) {
                 return Err(bot_err(format!("duplicate ranking-quality sha: {sha}")));
@@ -59,7 +68,11 @@ pub fn validate_ranking_quality_payload(payload: &RankingQualityBenchmarkData) -
     Ok(())
 }
 
-fn validate_ranking_quality_run(run: &RankingQualityBenchmarkRun, index: usize) -> Result<()> {
+fn validate_ranking_quality_run(
+    run: &RankingQualityBenchmarkRun,
+    index: usize,
+    schema: i64,
+) -> Result<()> {
     let sha = run
         .sha
         .as_deref()
@@ -87,17 +100,55 @@ fn validate_ranking_quality_run(run: &RankingQualityBenchmarkRun, index: usize) 
         .metrics
         .as_ref()
         .ok_or_else(|| bot_err(format!("runs[{index}].metrics required")))?;
+    if schema >= 2 {
+        require_metric(metrics.ndcg_at_10, index, "ndcg_at_10")?;
+        validate_mode_results(metrics.modes.as_deref(), index)?;
+        return Ok(());
+    }
     for (name, value) in [
         ("precision_at_5", metrics.precision_at_5),
         ("recall_at_10", metrics.recall_at_10),
         ("mrr", metrics.mrr),
     ] {
-        let v = value.ok_or_else(|| bot_err(format!("runs[{index}].metrics.{name} required")))?;
-        if !(0.0..=1.0).contains(&v) {
+        require_metric(value, index, name)?;
+    }
+    Ok(())
+}
+
+fn require_metric(value: Option<f64>, index: usize, name: &str) -> Result<()> {
+    let v = value.ok_or_else(|| bot_err(format!("runs[{index}].metrics.{name} required")))?;
+    if !(0.0..=1.0).contains(&v) {
+        return Err(bot_err(format!(
+            "runs[{index}].metrics.{name} out of range"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_mode_results(
+    modes: Option<&[crate::model::RankingQualityModeResult]>,
+    index: usize,
+) -> Result<()> {
+    let Some(modes) = modes else {
+        return Ok(());
+    };
+    if modes.is_empty() {
+        return Err(bot_err(format!(
+            "runs[{index}].metrics.modes must not be empty when present"
+        )));
+    }
+    for (mode_index, mode) in modes.iter().enumerate() {
+        let name = mode.mode.as_deref().ok_or_else(|| {
+            bot_err(format!(
+                "runs[{index}].metrics.modes[{mode_index}].mode required"
+            ))
+        })?;
+        if !matches!(name, "dense" | "hybrid" | "hybrid_rerank" | "full_graph") {
             return Err(bot_err(format!(
-                "runs[{index}].metrics.{name} out of range"
+                "runs[{index}].metrics.modes[{mode_index}].mode unknown: {name}"
             )));
         }
+        require_metric(mode.ndcg_at_10, index, "modes[].ndcg_at_10")?;
     }
     Ok(())
 }
@@ -294,6 +345,8 @@ mod tests {
                     mrr: Some(1.0),
                     expected_order_match: Some(1.0),
                     top_category_accuracy: None,
+                    ndcg_at_10: None,
+                    modes: None,
                 }),
                 status: Some("pass".into()),
                 gate_summary: None,
@@ -304,6 +357,86 @@ mod tests {
     #[test]
     fn accepts_valid_payload() {
         validate_ranking_quality_payload(&sample_payload()).expect("valid");
+    }
+
+    fn graded_payload() -> RankingQualityBenchmarkData {
+        let mut payload = sample_payload();
+        payload.schema_version = Some(2);
+        payload.runs.as_mut().unwrap()[0].metrics = Some(RankingQualityBenchmarkMetrics {
+            precision_at_5: None,
+            recall_at_10: None,
+            mrr: None,
+            expected_order_match: None,
+            top_category_accuracy: None,
+            ndcg_at_10: Some(0.82),
+            modes: Some(vec![
+                crate::model::RankingQualityModeResult {
+                    mode: Some("dense".into()),
+                    ndcg_at_10: Some(0.61),
+                    lexical_ndcg_at_10: None,
+                    graph_ndcg_at_10: None,
+                },
+                crate::model::RankingQualityModeResult {
+                    mode: Some("hybrid_rerank".into()),
+                    ndcg_at_10: Some(0.82),
+                    lexical_ndcg_at_10: Some(0.88),
+                    graph_ndcg_at_10: Some(0.79),
+                },
+            ]),
+        });
+        payload
+    }
+
+    #[test]
+    fn accepts_schema_two_with_graded_metrics() {
+        validate_ranking_quality_payload(&graded_payload()).expect("schema 2 is supported");
+    }
+
+    #[test]
+    fn schema_two_requires_the_graded_metric() {
+        let mut payload = graded_payload();
+        payload.runs.as_mut().unwrap()[0]
+            .metrics
+            .as_mut()
+            .unwrap()
+            .ndcg_at_10 = None;
+        let error = validate_ranking_quality_payload(&payload).expect_err("ndcg_at_10 is required");
+        assert!(error.to_string().contains("ndcg_at_10"));
+    }
+
+    #[test]
+    fn schema_two_rejects_an_unknown_mode() {
+        let mut payload = graded_payload();
+        payload.runs.as_mut().unwrap()[0]
+            .metrics
+            .as_mut()
+            .unwrap()
+            .modes
+            .as_mut()
+            .unwrap()[0]
+            .mode = Some("vibes".into());
+        let error = validate_ranking_quality_payload(&payload).expect_err("unknown mode");
+        assert!(error.to_string().contains("unknown"));
+    }
+
+    #[test]
+    fn schema_two_still_rejects_an_out_of_range_score() {
+        let mut payload = graded_payload();
+        payload.runs.as_mut().unwrap()[0]
+            .metrics
+            .as_mut()
+            .unwrap()
+            .ndcg_at_10 = Some(1.4);
+        let error = validate_ranking_quality_payload(&payload).expect_err("range check");
+        assert!(error.to_string().contains("out of range"));
+    }
+
+    #[test]
+    fn rejects_a_schema_newer_than_this_bot_understands() {
+        let mut payload = graded_payload();
+        payload.schema_version = Some(3);
+        let error = validate_ranking_quality_payload(&payload).expect_err("schema 3 is unknown");
+        assert!(error.to_string().contains("must be 1 or 2"));
     }
 
     #[test]
