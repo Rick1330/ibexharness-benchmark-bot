@@ -21,6 +21,8 @@ pub const WRITE_PIPELINE_BENCHMARK_DATA_LABEL: &str = "write-pipeline-benchmark-
 pub const EXTRACTION_QUALITY_BENCHMARK_DATA_LABEL: &str = "extraction-quality-benchmark-data";
 /// Shared branch for all suite data publishes — one open PR at a time.
 pub const DATA_PR_BRANCH: &str = "chore/bench-data-publish";
+/// The branch the data PR is merged into; publishes merge it in first to stay mergeable.
+pub const MAIN_BRANCH: &str = "main";
 
 pub fn resolve_harness_repo(requested: &str) -> Result<&str, String> {
     if harness_repo_override_enabled() {
