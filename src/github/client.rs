@@ -182,6 +182,51 @@ impl GitHubClient {
         )))
     }
 
+    /// Ensure the publish branch exists **and contains `base`**, so a long-lived data
+    /// branch cannot accumulate the add/add conflicts described on `merge_base_into_branch`.
+    pub async fn ensure_publish_branch(
+        &self,
+        repo: RepoRef<'_>,
+        branch: &str,
+        sha: &str,
+        base: &str,
+    ) -> Result<()> {
+        self.ensure_branch(repo, branch, sha).await?;
+        self.merge_base_into_branch(repo, branch, base).await
+    }
+
+    /// Merge `base` (normally `main`) into the long-lived data branch before publishing.
+    ///
+    /// The data branch outlives many runs, so once `main` takes a merge of it the two
+    /// diverge and the next publish adds the same files again — which GitHub reports as an
+    /// add/add conflict on every generated artifact (PR #1045, 2026-11-03). Merging `main`
+    /// in first makes those files identical ancestors instead of competing additions.
+    ///
+    /// 204 means the branch already contains `base`. 409 is a real conflict: report it with
+    /// the branch name rather than letting the publish fail later on a file write.
+    pub async fn merge_base_into_branch(
+        &self,
+        repo: RepoRef<'_>,
+        branch: &str,
+        base: &str,
+    ) -> Result<()> {
+        let path = format!("/repos/{}/{}/merges", repo.owner, repo.repo);
+        let body = serde_json::json!({"base": branch, "head": base});
+        let response = self.http.post_json_raw(&path, body).await?;
+        match response.status().as_u16() {
+            200 | 201 | 204 => Ok(()),
+            409 => Err(bot_err(format!(
+                "merging {base} into {branch} conflicts; resolve the data branch before publishing"
+            ))),
+            status => {
+                let body = response.text().await.unwrap_or_default();
+                Err(bot_err(format!(
+                    "merge {base} into {branch} failed: status {status}: {body}"
+                )))
+            }
+        }
+    }
+
     pub async fn download_artifact_zip(&self, repo: RepoRef<'_>, run_id: i64) -> Result<Vec<u8>> {
         self.download_named_artifact_zip(repo, run_id, "benchmark-data")
             .await

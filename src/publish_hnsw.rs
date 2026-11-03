@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use crate::config::{DATA_PR_BRANCH, HNSW_BENCHMARK_DATA_PATH};
+use crate::config::{DATA_PR_BRANCH, HNSW_BENCHMARK_DATA_PATH, MAIN_BRANCH};
 use crate::error::{bot_err, Result};
 use crate::github::{
     bot_commit_message, split_repo, CommitFile, CommitFilesRequest, GitHubClient, RepoPathRef,
@@ -75,7 +75,7 @@ pub async fn publish_hnsw_benchmark_data(
 
     let main_sha = client.main_sha(repo_ref).await?;
     client
-        .ensure_branch(repo_ref, DATA_PR_BRANCH, &main_sha)
+        .ensure_publish_branch(repo_ref, DATA_PR_BRANCH, &main_sha, MAIN_BRANCH)
         .await?;
 
     let subject = format!(
