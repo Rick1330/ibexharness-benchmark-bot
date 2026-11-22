@@ -28,15 +28,18 @@ newer payload would publish numbers it cannot explain.
 ```bash
 gh release download "$TAG" --repo Rick1330/ibexharness-benchmark-bot \
   --pattern 'ibex-benchmark-bot-linux-amd64*'
-sha256sum -c ibex-benchmark-bot-linux-amd64.sha256
-./ibex-benchmark-bot-linux-amd64 build-info   # build_sha must equal BENCHMARK_BOT_SHA
+sha256sum -c ibex-benchmark-bot-linux-amd64.sha256   # against the digest pinned in setup-benchmark-bot
+./ibex-benchmark-bot-linux-amd64 build-info          # build_sha must equal BENCHMARK_BOT_SHA
 ./ibex-benchmark-bot-linux-amd64 --help
 ```
 
-The checksum proves the asset was not altered in transit; `build-info` proves which commit it
-was compiled from (`build_sha`). The release job checks both before publishing: it fails when
-`build-info` does not report `git rev-parse HEAD`, and when the tag is not
-`bot-<7-char-sha>` of that commit.
+The pinned digest is what establishes that the asset is the one this repository published; `build-info` then
+confirms that asset was compiled from the commit named by `BENCHMARK_BOT_SHA`, so run it only after the
+checksum matches. It is a consistency check between the two pins, not proof of origin — a substituted binary
+can print any `build_sha`.
+
+The release job uses it differently, on a binary it just built: it fails when `build-info` does not report
+`git rev-parse HEAD`, and when the tag is not `bot-<7-char-sha>` of that commit.
 
 The `setup-benchmark-bot` action additionally requires the binary to answer
 `--require-subcommand <name>`, so a pin that predates a subcommand fails at setup rather than

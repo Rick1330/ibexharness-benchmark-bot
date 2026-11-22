@@ -46,7 +46,7 @@ Trusted:   Actions API run record, validated artifact JSON, App committer identi
 
 **Risk:** Malicious code in renderer executed during harness CI.
 
-**Mitigation:** Harness pins bot repo commit SHA via `BENCHMARK_BOT_SHA` (no `main` fallback). Renderer is pure JSON→Markdown; no network, no secrets. Unit tests + CODEOWNERS on renderer changes. The pin is now checkable at the artifact: the binary embeds the commit it was compiled from (`build-info`), and **Release binary** refuses to publish unless that commit matches the tag commit and the tag is `bot-<7-char-sha>`.
+**Mitigation:** Harness pins bot repo commit SHA via `BENCHMARK_BOT_SHA` (no `main` fallback). Renderer is pure JSON→Markdown; no network, no secrets. Unit tests + CODEOWNERS on renderer changes. The pin is checkable at the artifact: the binary embeds the commit it was compiled from (`build-info`), **Release binary** refuses to publish unless that commit matches the tag commit, and a consumer can cross-check `build-info` against the pinned digest and SHA. `build-info` is a consistency check, not proof of origin.
 
 ### T6: Markdown injection in PR comments
 
