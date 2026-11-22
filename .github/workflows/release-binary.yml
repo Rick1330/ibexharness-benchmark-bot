@@ -6,10 +6,11 @@ on:
   push:
     tags:
       - "v*"
+      - "bot-*"
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing or new tag name (e.g. v0.1.2 or a pin SHA tag)
+        description: Release tag naming the checked-out commit, bot-<7-char-sha> (e.g. bot-1bd5636)
         required: true
 
 permissions:
@@ -31,13 +32,46 @@ jobs:
       - uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16 # v2.8.2
 
       - name: Build release binary
-        run: cargo build --release
+        run: |
+          set -euo pipefail
+          export IBEX_BENCHMARK_BOT_BUILD_SHA="$(git rev-parse HEAD)"
+          echo "Building ibex-benchmark-bot for ${IBEX_BENCHMARK_BOT_BUILD_SHA}"
+          cargo build --release
 
       - name: Stage asset
         run: |
           set -euo pipefail
           cp target/release/ibex-benchmark-bot ibex-benchmark-bot-linux-amd64
           chmod +x ibex-benchmark-bot-linux-amd64
+
+      - name: Verify build provenance
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          set -euo pipefail
+          sha="$(git rev-parse HEAD)"
+          short="${sha:0:7}"
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            tag="$DISPATCH_TAG"
+          else
+            tag="$GITHUB_REF_NAME"
+          fi
+          # The harness pins BENCHMARK_BOT_RELEASE_TAG=bot-<7-char-sha> and silently
+          # ignores a tag that does not match the pin's short SHA, so a release under
+          # any other tag can never be picked up.
+          if [ "$tag" != "bot-${short}" ] && [ "$tag" != "v${short}" ]; then
+            echo "::error::Release tag ${tag} does not name commit ${sha} (expected bot-${short}); the harness would ignore it."
+            exit 1
+          fi
+          info="$(./ibex-benchmark-bot-linux-amd64 build-info)"
+          printf '%s\n' "$info"
+          reported="$(printf '%s\n' "$info" | sed -n 's/^build_sha=//p')"
+          if [ "$reported" != "$sha" ]; then
+            echo "::error::build-info reports build_sha=${reported}, expected ${sha}; refusing to publish an unverifiable asset."
+            exit 1
+          fi
+          echo "Verified build_sha=${sha} for tag ${tag}"
 
       - name: Publish GitHub Release
         env:

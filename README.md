@@ -31,6 +31,7 @@ GitHub App (Rust) · publishes benchmark data to <a href="https://github.com/Ric
 | `render-write-pr-comment` | Render Write pipeline sticky comment to stdout |
 | `post-extraction-pr-comment` | Upsert **Extraction quality** into the sticky comment |
 | `render-extraction-pr-comment` | Render Extraction quality sticky comment to stdout |
+| `build-info` | Print crate version and embedded build commit (provenance check) |
 
 [Setup](docs/APP_SETUP.md) · [Runbook](docs/RUNBOOK.md) · [Threat model](docs/THREAT_MODEL.md)
 
@@ -47,3 +48,7 @@ cargo fmt --all && cargo clippy --all-targets --all-features -- -D warnings && c
 
 Pin `BOT_RELEASE_SHA` and harness `BENCHMARK_BOT_SHA` to the same reviewed commit on `main`.
 Set harness `BENCHMARK_BOT_RELEASE_TAG` to `bot-<7-char-sha>` only after **Release binary** uploads `ibex-benchmark-bot-linux-amd64` and `ibex-benchmark-bot-linux-amd64.sha256` for that tag. Pin the digest in harness `.github/actions/setup-benchmark-bot/ibex-benchmark-bot-linux-amd64.sha256`.
+
+**Release binary** compiles with the checked-out commit embedded and refuses to publish when the binary it just built does not report `git rev-parse HEAD`, or when the tag is not `bot-<7-char-sha>` of that commit (`v<7-char-sha>` is also accepted).
+
+For a consumer the trusted anchor is still the digest pinned in the harness action, not the binary's own claim: check `sha256sum -c` against that pin first, then run `./ibex-benchmark-bot-linux-amd64 build-info` and confirm `build_sha` equals `BENCHMARK_BOT_SHA`. `build-info` is a consistency check between the two pins — asset digest and commit — and not proof of origin on its own, because any binary can print any string.
