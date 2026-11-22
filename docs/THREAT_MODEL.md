@@ -46,7 +46,7 @@ Trusted:   Actions API run record, validated artifact JSON, App committer identi
 
 **Risk:** Malicious code in renderer executed during harness CI.
 
-**Mitigation:** Harness pins bot repo commit SHA via `BENCHMARK_BOT_SHA` (no `main` fallback). Renderer is pure JSON→Markdown; no network, no secrets. Unit tests + CODEOWNERS on renderer changes.
+**Mitigation:** Harness pins bot repo commit SHA via `BENCHMARK_BOT_SHA` (no `main` fallback). Renderer is pure JSON→Markdown; no network, no secrets. Unit tests + CODEOWNERS on renderer changes. The pin is now checkable at the artifact: the binary embeds the commit it was compiled from (`build-info`), and **Release binary** refuses to publish unless that commit matches the tag commit and the tag is `bot-<7-char-sha>`.
 
 ### T6: Markdown injection in PR comments
 
@@ -86,5 +86,6 @@ Trusted:   Actions API run record, validated artifact JSON, App committer identi
 - [ ] Merge landed via PR with green `validate` (no direct `main` pushes)
 - [ ] `BOT_RELEASE_SHA`, harness `BENCHMARK_BOT_SHA`, and `BENCHMARK_BOT_RELEASE_TAG` updated together
 - [ ] Release asset includes required subcommands (`post-pr-comment`, `post-hnsw-pr-comment`)
+- [ ] Release asset `build-info` reports `BOT_RELEASE_SHA`
 - [ ] `cargo audit` clean in CI
 - [ ] Security unit tests pass (`verify`, `validate`, `sanitize`, `artifact`)
