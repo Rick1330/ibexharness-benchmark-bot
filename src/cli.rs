@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+use crate::build_info;
 use crate::config::resolve_harness_repo;
 use crate::error::{bot_err, Result};
 use crate::github::{
@@ -33,7 +34,11 @@ fn locked_repo(repo: &str) -> Result<&str> {
 }
 
 #[derive(Parser)]
-#[command(name = "ibex-benchmark-bot", about = "IBEX Harness Benchmark Bot")]
+#[command(
+    name = "ibex-benchmark-bot",
+    about = "IBEX Harness Benchmark Bot",
+    version = build_info::version_string()
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -191,6 +196,8 @@ pub enum Commands {
         #[arg(long, env = "PR_NUMBER")]
         pr_number: i64,
     },
+    /// Print the crate version and the commit this binary was built from
+    BuildInfo,
 }
 
 pub async fn run(cli: Cli) -> Result<()> {
@@ -429,6 +436,16 @@ pub async fn run(cli: Cli) -> Result<()> {
             let existing = existing_sticky_body(&client, repo_ref, pr_number).await?;
             let body = merge_extraction_quality_into_comment(&existing, &data).map_err(bot_err)?;
             upsert_pr_comment(&client, repo_ref, pr_number, &body, COMMENT_MARKER).await?;
+        }
+        Commands::BuildInfo => {
+            print!(
+                "{}",
+                build_info::format_build_info(
+                    env!("CARGO_PKG_NAME"),
+                    env!("CARGO_PKG_VERSION"),
+                    build_info::embedded_build_sha(),
+                )
+            );
         }
     }
     Ok(())

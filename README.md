@@ -31,6 +31,7 @@ GitHub App (Rust) · publishes benchmark data to <a href="https://github.com/Ric
 | `render-write-pr-comment` | Render Write pipeline sticky comment to stdout |
 | `post-extraction-pr-comment` | Upsert **Extraction quality** into the sticky comment |
 | `render-extraction-pr-comment` | Render Extraction quality sticky comment to stdout |
+| `build-info` | Print crate version and embedded build commit (provenance check) |
 
 [Setup](docs/APP_SETUP.md) · [Runbook](docs/RUNBOOK.md) · [Threat model](docs/THREAT_MODEL.md)
 
@@ -47,3 +48,5 @@ cargo fmt --all && cargo clippy --all-targets --all-features -- -D warnings && c
 
 Pin `BOT_RELEASE_SHA` and harness `BENCHMARK_BOT_SHA` to the same reviewed commit on `main`.
 Set harness `BENCHMARK_BOT_RELEASE_TAG` to `bot-<7-char-sha>` only after **Release binary** uploads `ibex-benchmark-bot-linux-amd64` and `ibex-benchmark-bot-linux-amd64.sha256` for that tag. Pin the digest in harness `.github/actions/setup-benchmark-bot/ibex-benchmark-bot-linux-amd64.sha256`.
+
+**Release binary** compiles with the checked-out commit embedded, so a downloaded asset can prove where it came from before it is trusted: `./ibex-benchmark-bot-linux-amd64 build-info` prints `name`, `version`, and `build_sha`, and `build_sha` must equal `BENCHMARK_BOT_SHA`. The release job fails instead of publishing when `build-info` disagrees with `git rev-parse HEAD` or when the tag is not `bot-<7-char-sha>` (`v<7-char-sha>` is also accepted).
